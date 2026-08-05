@@ -337,6 +337,67 @@ export interface ProductsAnalyticsItem {
   trend?: 'up' | 'down' | 'flat'
 }
 
+export interface OmsOption {
+  id: string
+  name: string
+}
+
+export async function fetchOmsCategories(): Promise<OmsOption[]> {
+  const { data } = await apiClient.get<OmsOption[]>('/cskh/oms/categories')
+  return data
+}
+
+export async function fetchOmsLocations(): Promise<OmsOption[]> {
+  const { data } = await apiClient.get<OmsOption[]>('/cskh/oms/locations')
+  return data
+}
+
+export interface ProductOperationsDashboard {
+  month: string
+  kpis: {
+    ordered: number
+    orderedChangePct: number
+    shipped: number
+    shippedChangePct: number
+    shipToOrderRate: number
+    stockoutCount: number
+    stuckOrdersTotal: number
+  }
+  topOrdered: Array<{
+    rank: number
+    name: string
+    category: string
+    count: number
+    qty: number
+    changePct: number
+  }>
+  stockouts: Array<{
+    name: string
+    sku: string
+    shortage: number
+    available: number
+    stuckOrders: number
+  }>
+  stockoutListCount: number
+  stockoutsPagination: { page: number; pageSize: number; total: number; totalPages: number }
+  topRevenueProducts: Array<{ name: string; sku: string; quantity: number; revenue: number }>
+  extraMetrics: Array<{ key: string; label: string; value: string; caption: string }>
+}
+
+export async function fetchProductOperations(params?: {
+  month?: string
+  categoryId?: string
+  locationId?: string
+  topLimit?: number
+  stockoutPage?: number
+  stockoutPageSize?: number
+}): Promise<ProductOperationsDashboard> {
+  const { data } = await apiClient.get<ProductOperationsDashboard>('/cskh/products/operations', {
+    params,
+  })
+  return data
+}
+
 export interface ProductsAnalyticsDashboard {
   source: 'database'
   kpis: ProductsAnalyticsKpi[]
