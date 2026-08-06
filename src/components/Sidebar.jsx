@@ -1,12 +1,9 @@
-import { useEffect, useState } from 'react';
-import { NavLink, useLocation, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   Gauge, ChatCircleText, Brain, ShieldCheck, Users,
   UserCircle, Globe, Megaphone, Package, CurrencyDollar,
-  ChartBar, Wrench, GearSix, CaretDown
+  ChartBar, Wrench, GearSix
 } from '@phosphor-icons/react';
-import { fetchProductsAnalytics } from '@/features/cskh-quality/api';
 
 // Viên Chi Bảo flower logo — 8 petals at 45° intervals
 function VCBIcon({ size = 26 }) {
@@ -44,94 +41,12 @@ const navItems = [
   { to: '/customers', icon: UserCircle, label: 'Khách hàng' },
   { to: '/pages', icon: Globe, label: 'Page / Kênh' },
   { to: '/ads', icon: Megaphone, label: 'Quảng cáo' },
-  { to: '/products', icon: Package, label: 'Sản phẩm', hasCategories: true },
+  { to: '/products', icon: Package, label: 'Sản phẩm' },
   { to: '/revenue', icon: CurrencyDollar, label: 'Doanh thu Chat' },
   { to: '/reports', icon: ChartBar, label: 'Báo cáo' },
   { to: '/warranty', icon: Wrench, label: 'Bảo hành' },
   { to: '/settings', icon: GearSix, label: 'Cài đặt' },
 ];
-
-function ProductsNavItem({ item, isActive }) {
-  const location = useLocation();
-  const [searchParams] = useSearchParams();
-  const selectedCategory = searchParams.get('category') ?? '';
-  const [expanded, setExpanded] = useState(isActive);
-
-  useEffect(() => {
-    if (isActive) setExpanded(true);
-  }, [isActive]);
-
-  const { data: categories = [], isLoading, isError } = useQuery({
-    queryKey: ['cskh', 'products', 'categories'],
-    queryFn: async () => {
-      const data = await fetchProductsAnalytics({ page: 1, pageSize: 1 });
-      return data.categories ?? [];
-    },
-    staleTime: 90_000,
-    gcTime: 5 * 60_000,
-    enabled: expanded,
-  });
-
-  const Icon = item.icon;
-  const onProducts = location.pathname.startsWith('/products');
-
-  return (
-    <div className="flex flex-col gap-px">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className={`flex w-full items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 py-2 text-[13.5px] font-medium transition-all duration-150 hover:bg-white/10 hover:text-white ${isActive ? 'bg-indigo-600/60 text-white shadow-sm' : 'text-white/60'}`}
-        aria-expanded={expanded}
-      >
-        <Icon weight="duotone" className="h-4 w-4 shrink-0" />
-        <span className="flex-1 text-left">{item.label}</span>
-        <CaretDown
-          size={12}
-          weight="bold"
-          className="shrink-0 opacity-70 transition-transform duration-150"
-          style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
-        />
-      </button>
-
-      {expanded ? (
-        <div className="mb-1 ml-3 flex flex-col gap-px border-l border-white/15 pl-2">
-          <NavLink
-            to="/products"
-            end
-            className={() => {
-              const active = onProducts && !selectedCategory;
-              return `rounded-md px-2 py-1.5 text-[12px] font-medium transition-colors hover:bg-white/10 hover:text-white ${active ? 'bg-white/15 text-white' : 'text-white/55'}`;
-            }}
-          >
-            Tất cả danh mục
-          </NavLink>
-
-          {isLoading ? (
-            <div className="px-2 py-1.5 text-[11px] text-white/40">Đang tải…</div>
-          ) : isError ? (
-            <div className="px-2 py-1.5 text-[11px] text-rose-200/80">Không tải được danh mục</div>
-          ) : categories.length === 0 ? (
-            <div className="px-2 py-1.5 text-[11px] text-white/40">Chưa có danh mục</div>
-          ) : (
-            categories.map((cat) => {
-              const active = onProducts && selectedCategory === cat;
-              return (
-                <NavLink
-                  key={cat}
-                  to={`/products?category=${encodeURIComponent(cat)}`}
-                  title={cat}
-                  className={`truncate rounded-md px-2 py-1.5 text-[12px] font-medium transition-colors hover:bg-white/10 hover:text-white ${active ? 'bg-white/15 text-white' : 'text-white/55'}`}
-                >
-                  {cat}
-                </NavLink>
-              );
-            })
-          )}
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 export default function Sidebar() {
   const location = useLocation();
@@ -150,10 +65,6 @@ export default function Sidebar() {
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to);
-
-          if (item.hasCategories) {
-            return <ProductsNavItem key={item.to} item={item} isActive={isActive} />;
-          }
 
           return (
             <NavLink
