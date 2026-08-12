@@ -21,6 +21,9 @@ export interface CskhPage {
   adAccountName?: string | null
   adSpendUnavailableReason?: string | null
   adSpendSyncedAt?: string | null
+  managerName?: string | null
+  region?: string | null
+  team?: string | null
 }
 
 export interface CskhPagesInboundSummary {

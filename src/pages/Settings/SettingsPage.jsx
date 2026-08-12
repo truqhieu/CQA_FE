@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Link2, Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import { Link2, Loader2, RefreshCw, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
 import {
-  MagnifyingGlass, FloppyDisk, Sparkle, CheckCircle, CaretRight, Sliders, Play, GearSix,
+  MagnifyingGlass, FloppyDisk, Sparkle, CheckCircle, CaretRight, CaretLeft, Sliders, Play, GearSix,
   Shield, HardDrive, ArrowsCounterClockwise, Megaphone, Package, Wrench, Brain, Key,
   Bell, Link, ClipboardText, Lightbulb, FacebookLogo
 } from '@phosphor-icons/react';
@@ -19,6 +19,8 @@ import {
   isAsyncInboxSync,
 } from '@/features/cskh-quality/api';
 import { buildOAuthChannelReturnUrl } from '@/lib/authSession';
+
+const CHANNELS_PAGE_SIZE = 10;
 
 export default function SettingsPage() {
   const [anim, setAnim] = useState(false);
@@ -58,6 +60,88 @@ Các tiêu chí cần đánh giá:
     refetchInterval: (query) =>
       query.state.data?.oauthSyncStatus === 'running' ? 2_000 : false,
   });
+
+  const [channelsPage, setChannelsPage] = useState(1);
+  const [channelSearch, setChannelSearch] = useState('');
+  const [channelManagerFilter, setChannelManagerFilter] = useState('all');
+  const [channelRegionFilter, setChannelRegionFilter] = useState('all');
+  const [channelTeamFilter, setChannelTeamFilter] = useState('all');
+  const [channelStatusFilter, setChannelStatusFilter] = useState('all');
+  const [channelSortBy, setChannelSortBy] = useState('pageName');
+  const [channelSortDir, setChannelSortDir] = useState('asc');
+
+  const channelManagerOptions = useMemo(
+    () => [...new Set((pagesData?.pages || []).map((p) => p.managerName).filter(Boolean))],
+    [pagesData?.pages]
+  );
+  const channelRegionOptions = useMemo(
+    () => [...new Set((pagesData?.pages || []).map((p) => p.region).filter(Boolean))],
+    [pagesData?.pages]
+  );
+  const channelTeamOptions = useMemo(
+    () => [...new Set((pagesData?.pages || []).map((p) => p.team).filter(Boolean))],
+    [pagesData?.pages]
+  );
+
+  const isChannelFilterActive =
+    channelSearch.trim() !== '' ||
+    channelManagerFilter !== 'all' ||
+    channelRegionFilter !== 'all' ||
+    channelTeamFilter !== 'all' ||
+    channelStatusFilter !== 'all';
+
+  const filteredChannelPages = useMemo(() => {
+    const q = channelSearch.trim().toLowerCase();
+    return (pagesData?.pages || []).filter((page) => {
+      const matchesSearch =
+        !q ||
+        (page.pageName || '').toLowerCase().includes(q) ||
+        (page.pageId || '').toLowerCase().includes(q);
+      const matchesManager = channelManagerFilter === 'all' || page.managerName === channelManagerFilter;
+      const matchesRegion = channelRegionFilter === 'all' || page.region === channelRegionFilter;
+      const matchesTeam = channelTeamFilter === 'all' || page.team === channelTeamFilter;
+      const matchesStatus =
+        channelStatusFilter === 'all' ||
+        (channelStatusFilter === 'enabled' ? page.enabled : !page.enabled);
+      return matchesSearch && matchesManager && matchesRegion && matchesTeam && matchesStatus;
+    });
+  }, [pagesData?.pages, channelSearch, channelManagerFilter, channelRegionFilter, channelTeamFilter, channelStatusFilter]);
+
+  const sortedChannelPages = useMemo(() => {
+    const dir = channelSortDir === 'asc' ? 1 : -1;
+    const getValue = (page) => {
+      if (channelSortBy === 'enabled') return page.enabled ? 1 : 0;
+      return (page[channelSortBy] || '').toString().toLowerCase();
+    };
+    return [...filteredChannelPages].sort((a, b) => {
+      const va = getValue(a);
+      const vb = getValue(b);
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+      return 0;
+    });
+  }, [filteredChannelPages, channelSortBy, channelSortDir]);
+
+  const channelsTotal = sortedChannelPages.length;
+  const channelsTotalPages = Math.max(1, Math.ceil(channelsTotal / CHANNELS_PAGE_SIZE));
+  const channelsCurrentItems = sortedChannelPages.slice(
+    (channelsPage - 1) * CHANNELS_PAGE_SIZE,
+    channelsPage * CHANNELS_PAGE_SIZE
+  );
+  const channelsRangeStart = channelsTotal ? (channelsPage - 1) * CHANNELS_PAGE_SIZE + 1 : 0;
+  const channelsRangeEnd = Math.min(channelsPage * CHANNELS_PAGE_SIZE, channelsTotal);
+
+  useEffect(() => {
+    setChannelsPage(1);
+  }, [channelsTotal, channelSearch, channelManagerFilter, channelRegionFilter, channelTeamFilter, channelStatusFilter]);
+
+  const resetChannelFilters = () => {
+    setChannelSearch('');
+    setChannelManagerFilter('all');
+    setChannelRegionFilter('all');
+    setChannelTeamFilter('all');
+    setChannelStatusFilter('all');
+  };
 
   // Toggle active/inactive status
   const toggleMutation = useMutation({
@@ -454,7 +538,7 @@ Các tiêu chí cần đánh giá:
 
         {/* Cài đặt kênh (Real Facebook Integration) */}
         {settingsTabs[activeTabIdx] === 'Cài đặt kênh' && (
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col animate-in fade-in slide-in-from-bottom-4" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col animate-in fade-in slide-in-from-bottom-4" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
             {isLoadingPages && !pagesData ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '64px 24px', gap: '12px', color: '#6b7280' }}>
                 <Loader2 size={32} className="animate-spin" style={{ color: '#4f46e5' }} />
@@ -657,12 +741,101 @@ Các tiêu chí cần đánh giá:
             )}
 
             {pagesData?.oauthConnected && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 }}>
                 <div style={{ fontSize: '13px', fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  Danh sách trang quản lý ({pagesData.pages.length})
+                  Danh sách trang quản lý ({channelsTotal}{channelsTotal !== pagesData.pages.length ? `/${pagesData.pages.length}` : ''})
                   {isPagesBusy && (
                     <Loader2 size={14} className="animate-spin" style={{ color: '#4f46e5' }} />
                   )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '8px', alignItems: 'stretch' }}>
+                  <div style={{ position: 'relative', gridColumn: 'span 2' }}>
+                    <MagnifyingGlass size={13} style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+                    <input
+                      type="search"
+                      value={channelSearch}
+                      onChange={(e) => setChannelSearch(e.target.value)}
+                      placeholder="Tìm theo tên trang hoặc Page ID..."
+                      style={{ width: '100%', height: '32px', borderRadius: '6px', border: '1px solid #e5e7eb', padding: '0 10px 0 28px', fontSize: '12px', color: '#374151', boxSizing: 'border-box' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', height: '32px', borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                    <select
+                      value={channelSortBy}
+                      onChange={(e) => setChannelSortBy(e.target.value)}
+                      style={{ flex: 1, minWidth: 0, height: '100%', border: 'none', padding: '0 8px', fontSize: '12px', color: '#374151', background: '#fff' }}
+                    >
+                      <option value="pageName">Sắp xếp: Tên trang</option>
+                      <option value="managerName">Sắp xếp: Người quản lý</option>
+                      <option value="region">Sắp xếp: Khu vực</option>
+                      <option value="team">Sắp xếp: Nhóm / Team</option>
+                      <option value="enabled">Sắp xếp: Trạng thái</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setChannelSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                      title={channelSortDir === 'asc' ? 'Đang tăng dần — bấm để đổi giảm dần' : 'Đang giảm dần — bấm để đổi tăng dần'}
+                      style={{ height: '100%', width: '32px', flexShrink: 0, border: 'none', borderLeft: '1px solid #e5e7eb', background: '#f9fafb', color: '#374151', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      {channelSortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+                    </button>
+                  </div>
+
+                  <select
+                    value={channelManagerFilter}
+                    onChange={(e) => setChannelManagerFilter(e.target.value)}
+                    style={{ width: '100%', height: '32px', borderRadius: '6px', border: '1px solid #e5e7eb', padding: '0 8px', fontSize: '12px', color: '#374151', background: '#fff' }}
+                  >
+                    <option value="all">Tất cả quản lý</option>
+                    {channelManagerOptions.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={channelRegionFilter}
+                    onChange={(e) => setChannelRegionFilter(e.target.value)}
+                    style={{ width: '100%', height: '32px', borderRadius: '6px', border: '1px solid #e5e7eb', padding: '0 8px', fontSize: '12px', color: '#374151', background: '#fff' }}
+                  >
+                    <option value="all">Tất cả khu vực</option>
+                    {channelRegionOptions.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={channelTeamFilter}
+                    onChange={(e) => setChannelTeamFilter(e.target.value)}
+                    style={{ width: '100%', height: '32px', borderRadius: '6px', border: '1px solid #e5e7eb', padding: '0 8px', fontSize: '12px', color: '#374151', background: '#fff' }}
+                  >
+                    <option value="all">Tất cả nhóm / team</option>
+                    {channelTeamOptions.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={channelStatusFilter}
+                    onChange={(e) => setChannelStatusFilter(e.target.value)}
+                    style={{ width: '100%', height: '32px', borderRadius: '6px', border: '1px solid #e5e7eb', padding: '0 8px', fontSize: '12px', color: '#374151', background: '#fff' }}
+                  >
+                    <option value="all">Tất cả trạng thái</option>
+                    <option value="enabled">Đang hoạt động</option>
+                    <option value="disabled">Tạm dừng</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={resetChannelFilters}
+                    disabled={!isChannelFilterActive}
+                    style={{
+                      width: '100%', height: '32px', borderRadius: '6px', padding: '0 10px', fontSize: '12px', fontWeight: 600,
+                      border: '1px solid #e5e7eb',
+                      color: isChannelFilterActive ? '#dc2626' : '#c1c7d0',
+                      background: '#f9fafb',
+                      cursor: isChannelFilterActive ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    Xóa lọc
+                  </button>
                 </div>
 
                 {isPagesBusy ? (
@@ -676,20 +849,27 @@ Các tiêu chí cần đánh giá:
                   <div style={{ padding: '24px', textAlign: 'center', background: '#f9fafb', borderRadius: '8px', color: '#6b7280', fontSize: '12px' }}>
                     Không tìm thấy Fanpage nào. Vui lòng kiểm tra lại quyền truy cập Facebook.
                   </div>
+                ) : channelsTotal === 0 ? (
+                  <div style={{ padding: '24px', textAlign: 'center', background: '#f9fafb', borderRadius: '8px', color: '#6b7280', fontSize: '12px' }}>
+                    Không có kênh nào khớp với bộ lọc hiện tại.
+                  </div>
                 ) : (
-                  <div style={{ overflow: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
+                  <div style={{ overflowX: 'auto', overflowY: 'hidden', maxWidth: '100%', border: '1px solid #e5e7eb', borderRadius: '8px', scrollbarWidth: 'thin' }}>
                     <table className="data-table" style={{ margin: 0 }}>
                       <thead>
                         <tr>
                           <th>Hình ảnh</th>
                           <th>Tên Trang / Fanpage</th>
                           <th>Page ID</th>
+                          <th>Người quản lý</th>
+                          <th>Khu vực</th>
+                          <th>Nhóm / Team</th>
                           <th>Trạng thái hoạt động</th>
                           <th style={{ textAlign: 'right' }}>Hành động</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {pagesData.pages.map((page) => (
+                        {channelsCurrentItems.map((page) => (
                           <tr key={page.pageId}>
                             <td>
                               <img 
@@ -708,6 +888,15 @@ Các tiêu chí cần đánh giá:
                             </td>
                             <td style={{ fontSize: '11.5px', color: '#6b7280', fontFamily: 'monospace' }}>
                               {page.pageId}
+                            </td>
+                            <td style={{ fontSize: '12px', color: '#374151' }}>
+                              {page.managerName || <span style={{ color: '#9ca3af' }}>—</span>}
+                            </td>
+                            <td style={{ fontSize: '12px', color: '#374151' }}>
+                              {page.region || <span style={{ color: '#9ca3af' }}>—</span>}
+                            </td>
+                            <td style={{ fontSize: '12px', color: '#374151' }}>
+                              {page.team || <span style={{ color: '#9ca3af' }}>—</span>}
                             </td>
                             <td>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -746,8 +935,54 @@ Các tiêu chí cần đánh giá:
                             </td>
                           </tr>
                         ))}
+                        {channelsCurrentItems.length < CHANNELS_PAGE_SIZE &&
+                          Array.from({ length: CHANNELS_PAGE_SIZE - channelsCurrentItems.length }).map((_, idx) => (
+                            <tr key={`channel-filler-${idx}`} aria-hidden="true" style={{ visibility: 'hidden' }}>
+                              <td><div style={{ width: '32px', height: '32px' }} /></td>
+                              <td colSpan={7}>&nbsp;</td>
+                            </tr>
+                          ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+
+                {!isPagesBusy && channelsTotal > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', paddingTop: '4px' }}>
+                    <div style={{ fontSize: '12px', color: '#6b7280' }}>
+                      Hiển thị {channelsRangeStart}-{channelsRangeEnd} trong {channelsTotal} kênh
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setChannelsPage((page) => Math.max(1, page - 1))}
+                        disabled={channelsPage === 1}
+                        style={{
+                          height: '30px', border: '1px solid #e5e7eb', borderRadius: '7px', background: '#fff',
+                          color: '#374151', fontSize: '12px', padding: '0 10px', display: 'inline-flex', alignItems: 'center', gap: '4px',
+                          cursor: channelsPage === 1 ? 'not-allowed' : 'pointer', opacity: channelsPage === 1 ? 0.5 : 1,
+                        }}
+                      >
+                        <CaretLeft size={12} weight="bold" />
+                        Trước
+                      </button>
+                      <span style={{ minWidth: '60px', textAlign: 'center', fontSize: '12px', fontWeight: 700, color: '#374151' }}>
+                        {channelsPage}/{channelsTotalPages}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setChannelsPage((page) => Math.min(channelsTotalPages, page + 1))}
+                        disabled={channelsPage === channelsTotalPages}
+                        style={{
+                          height: '30px', border: '1px solid #e5e7eb', borderRadius: '7px', background: '#fff',
+                          color: '#374151', fontSize: '12px', padding: '0 10px', display: 'inline-flex', alignItems: 'center', gap: '4px',
+                          cursor: channelsPage === channelsTotalPages ? 'not-allowed' : 'pointer', opacity: channelsPage === channelsTotalPages ? 0.5 : 1,
+                        }}
+                      >
+                        Sau
+                        <CaretRight size={12} weight="bold" />
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
