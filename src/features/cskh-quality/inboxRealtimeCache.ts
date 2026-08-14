@@ -9,8 +9,68 @@ export type InboxRealtimeConversationPatch = Partial<CskhInboxConversation> & {
   labels?: CskhInboxConversation['labels']
 }
 
-function sortConversationsByRecent(a: CskhInboxConversation, b: CskhInboxConversation) {
-  return new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime()
+function sortConversationsByRecent(
+  a: Pick<CskhInboxConversation, 'id' | 'lastMessageAt' | 'updatedAt'>,
+  b: Pick<CskhInboxConversation, 'id' | 'lastMessageAt' | 'updatedAt'>,
+): number {
+  const at = new Date(a.lastMessageAt ?? a.updatedAt ?? 0).getTime()
+  const bt = new Date(b.lastMessageAt ?? b.updatedAt ?? 0).getTime()
+  if (bt !== at) return bt - at
+  return b.id.localeCompare(a.id)
+}
+
+function collapseInboxMessages(messages: CskhInboxMessage[]): CskhInboxMessage[] {
+  const byId = new Map<string, CskhInboxMessage>()
+  const byFb = new Map<string, string>()
+  for (const msg of messages) {
+    const prev = byId.get(msg.id)
+    byId.set(msg.id, prev ? { ...prev, ...msg } : msg)
+    if (msg.fbMessageId) {
+      const existingId = byFb.get(msg.fbMessageId)
+      if (existingId && existingId !== msg.id) {
+        const keepId = msg.id.startsWith('temp-') ? existingId : msg.id
+        const dropId = keepId === msg.id ? existingId : msg.id
+        const keep = { ...byId.get(dropId), ...byId.get(keepId), fbMessageId: msg.fbMessageId } as CskhInboxMessage
+        byId.delete(dropId)
+        byId.set(keepId, keep)
+        byFb.set(msg.fbMessageId, keepId)
+      } else {
+        byFb.set(msg.fbMessageId, msg.id)
+      }
+    }
+  }
+  const list = [...byId.values()]
+  for (const temp of list.filter((m) => m.id.startsWith('temp-'))) {
+    const match = list.find(
+      (m) =>
+        !m.id.startsWith('temp-') &&
+        m.direction === 'outbound' &&
+        (m.text || '').replace(/\s+/g, ' ').trim() === (temp.text || '').replace(/\s+/g, ' ').trim() &&
+        Math.abs(new Date(m.sentAt).getTime() - new Date(temp.sentAt).getTime()) < 30_000,
+    )
+    if (match) byId.delete(temp.id)
+  }
+  const collapsed = [...byId.values()].sort(
+    (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime(),
+  )
+  const out: CskhInboxMessage[] = []
+  for (const m of collapsed) {
+    const last = out[out.length - 1]
+    if (
+      last &&
+      last.direction === 'outbound' &&
+      m.direction === 'outbound' &&
+      (last.text || '').replace(/\s+/g, ' ').trim() === (m.text || '').replace(/\s+/g, ' ').trim() &&
+      Math.abs(new Date(last.sentAt).getTime() - new Date(m.sentAt).getTime()) < 12_000
+    ) {
+      if ((m.fbMessageId && !last.fbMessageId) || (m.status === 'sent' && last.status === 'pending')) {
+        out[out.length - 1] = m
+      }
+      continue
+    }
+    out.push(m)
+  }
+  return out
 }
 
 /** Gộp các trang infinite query, khử trùng, sort theo tin mới nhất — tránh list nhảy loạn sau SSE. */
@@ -182,9 +242,7 @@ export function appendInboxMessagesToCache(
     for (const msg of incoming) {
       byId.set(msg.id, { ...byId.get(msg.id), ...msg })
     }
-    const merged = [...byId.values()].sort(
-      (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime(),
-    )
+    const merged = collapseInboxMessages([...byId.values()])
     return {
       ...prev,
       conversation: conversationPatch
@@ -256,6 +314,10 @@ export function patchInboxConversationInCache(
       })
     }
   }
+}
+
+export function collapseInboxMessageList(messages: CskhInboxMessage[]) {
+  return collapseInboxMessages(messages)
 }
 
 export const INBOX_MESSAGE_PREVIEW_PREFIX = 'preview-'

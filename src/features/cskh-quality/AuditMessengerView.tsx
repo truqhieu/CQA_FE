@@ -1839,7 +1839,7 @@ export function AuditMessengerView({
                             e.preventDefault()
                             const t = draft.trim()
                             if (!t || sendMut.isPending || !inboxConv) return
-                            sendMut.mutate(t)
+                            void sendMut.mutateAsync(t)
                           }}
                         >
                           <textarea
@@ -1850,7 +1850,7 @@ export function AuditMessengerView({
                               if (e.key === 'Enter' && !e.shiftKey) {
                                 e.preventDefault()
                                 const t = draft.trim()
-                                if (t && !sendMut.isPending && inboxConv) sendMut.mutate(t)
+                                if (t && !sendMut.isPending && inboxConv) void sendMut.mutateAsync(t)
                               }
                             }}
                             disabled={!inboxConv}

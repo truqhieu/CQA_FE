@@ -19,6 +19,7 @@ import {
   isAsyncInboxSync,
 } from '@/features/cskh-quality/api';
 import { buildOAuthChannelReturnUrl } from '@/lib/authSession';
+import PancakeChannelsPanel from '@/features/pancake-test/PancakeChannelsPanel';
 
 export default function SettingsPage() {
   const [anim, setAnim] = useState(false);
@@ -452,9 +453,9 @@ Các tiêu chí cần đánh giá:
           </>
         )}
 
-        {/* Cài đặt kênh (Real Facebook Integration) */}
+        {/* Cài đặt kênh */}
         {settingsTabs[activeTabIdx] === 'Cài đặt kênh' && (
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col animate-in fade-in slide-in-from-bottom-4" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col animate-in fade-in slide-in-from-bottom-4" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {isLoadingPages && !pagesData ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '64px 24px', gap: '12px', color: '#6b7280' }}>
                 <Loader2 size={32} className="animate-spin" style={{ color: '#4f46e5' }} />
@@ -462,57 +463,67 @@ Các tiêu chí cần đánh giá:
               </div>
             ) : (
             <>
-            <div style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#111827' }}>Cấu hình Kênh Kết nối</h3>
-                <p style={{ fontSize: '11px', color: '#6b7280' }}>Kết nối tài khoản Facebook để quét và chấm điểm tự động các hội thoại chăm sóc khách hàng</p>
-              </div>
-              
-              {pagesData?.oauthConnected && (
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button 
-                    onClick={() => refreshMutation.mutate()}
-                    disabled={isRefreshing}
-                    style={{ 
-                      padding: '6px 12px', 
-                      borderRadius: '6px', 
-                      fontSize: '12px', 
-                      fontWeight: 600, 
-                      background: '#f9fafb', 
-                      border: '1px solid #e5e7eb', 
-                      color: '#374151',
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '4px',
-                      cursor: 'pointer' 
-                    }}
-                  >
-                    <RefreshCw size={12} className={isRefreshing ? 'animate-spin' : ''} />
-                    Đồng bộ lại Pages
-                  </button>
-                  
-                  <button 
-                    onClick={() => syncMutation.mutate(undefined)}
-                    disabled={isSyncing}
-                    style={{ 
-                      padding: '6px 12px', 
-                      borderRadius: '6px', 
-                      fontSize: '12px', 
-                      fontWeight: 600, 
-                      background: '#4f46e5', 
-                      color: '#fff',
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '4px',
-                      cursor: 'pointer' 
-                    }}
-                  >
-                    <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} />
-                    Đồng bộ tin nhắn
-                  </button>
-                </div>
-              )}
+            <div style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: '8px' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#111827' }}>Cấu hình Kênh Kết nối</h3>
+              <p style={{ fontSize: '11px', color: '#6b7280' }}>
+                Quản lý kênh Facebook (Graph API) và kênh Pancake (User Access Token) riêng biệt.
+              </p>
             </div>
+
+            {/* ===== Kênh từ Facebook ===== */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <FacebookLogo size={18} weight="fill" style={{ color: '#1877f2' }} />
+                  <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#111827', margin: 0 }}>
+                    Kênh từ Facebook
+                  </h4>
+                </div>
+                {pagesData?.oauthConnected && (
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button 
+                      onClick={() => refreshMutation.mutate()}
+                      disabled={isRefreshing}
+                      style={{ 
+                        padding: '6px 12px', 
+                        borderRadius: '6px', 
+                        fontSize: '12px', 
+                        fontWeight: 600, 
+                        background: '#f9fafb', 
+                        border: '1px solid #e5e7eb', 
+                        color: '#374151',
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '4px',
+                        cursor: 'pointer' 
+                      }}
+                    >
+                      <RefreshCw size={12} className={isRefreshing ? 'animate-spin' : ''} />
+                      Đồng bộ lại Pages
+                    </button>
+                    
+                    <button 
+                      onClick={() => syncMutation.mutate(undefined)}
+                      disabled={isSyncing}
+                      style={{ 
+                        padding: '6px 12px', 
+                        borderRadius: '6px', 
+                        fontSize: '12px', 
+                        fontWeight: 600, 
+                        background: '#4f46e5', 
+                        color: '#fff',
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '4px',
+                        cursor: 'pointer' 
+                      }}
+                    >
+                      <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} />
+                      Đồng bộ tin nhắn
+                    </button>
+                  </div>
+                )}
+              </div>
 
             <div style={{ 
               background: pagesData?.oauthConnected ? '#f0fdf4' : '#f9fafb', 
@@ -659,7 +670,7 @@ Các tiêu chí cần đánh giá:
             {pagesData?.oauthConnected && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ fontSize: '13px', fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  Danh sách trang quản lý ({pagesData.pages.length})
+                  Danh sách Fanpage ({pagesData.pages.length})
                   {isPagesBusy && (
                     <Loader2 size={14} className="animate-spin" style={{ color: '#4f46e5' }} />
                   )}
@@ -752,6 +763,28 @@ Các tiêu chí cần đánh giá:
                 )}
               </div>
             )}
+            </div>
+
+            {/* ===== Kênh từ Pancake ===== */}
+            <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{
+                  width: 28, height: 28, borderRadius: 8, background: '#4f46e5',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 800,
+                }}>
+                  P
+                </div>
+                <div>
+                  <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#111827', margin: 0 }}>
+                    Kênh từ Pancake
+                  </h4>
+                  <p style={{ fontSize: 11, color: '#6b7280', margin: 0 }}>
+                    Toàn bộ page/kênh gắn với User Access Token Pancake (Facebook, IG, TikTok…).
+                  </p>
+                </div>
+              </div>
+              <PancakeChannelsPanel />
+            </div>
             </>
             )}
           </div>

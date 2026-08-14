@@ -65,11 +65,21 @@ function clearAuthAndRedirectLogin(): void {
   }
 }
 
+function isAuthLoginRequest(url?: string): boolean {
+  if (!url) return false;
+  return url.includes('/auth/login');
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const status = error.response?.status;
     const original = error.config as (typeof error.config & { _retried?: boolean }) | undefined;
+
+    // Sai TK/MK trả 401 — không refresh / không đá lại /login
+    if (status === 401 && isAuthLoginRequest(original?.url)) {
+      return Promise.reject(error);
+    }
 
     if (status === 401 && original && !original._retried) {
       original._retried = true;
@@ -90,10 +100,21 @@ apiClient.interceptors.response.use(
 
 export function getApiErrorMessage(error: any): string {
   if (axios.isAxiosError(error)) {
+    if (!error.response) {
+      if (error.code === 'ECONNABORTED' || /timeout/i.test(error.message || '')) {
+        return 'Máy chủ phản hồi quá chậm (timeout). Thử lại sau.';
+      }
+      if (error.code === 'ERR_NETWORK' || /network|cors|connection refused/i.test(error.message || '')) {
+        return 'Không kết nối được máy chủ. Kiểm tra BE đang chạy (localhost:3001).';
+      }
+      return error.message || 'Không kết nối được máy chủ';
+    }
     const data = error.response?.data;
     const msg = data?.message;
     if (Array.isArray(msg)) return msg.join(', ');
-    if (msg) return msg;
+    if (typeof msg === 'string' && msg.trim()) return msg;
+    if (error.response.status === 401) return 'Tài khoản hoặc mật khẩu không đúng';
+    if (error.response.status === 403) return 'Bạn không có quyền truy cập';
     if (error.message) return error.message;
   }
   if (error instanceof Error) return error.message;
