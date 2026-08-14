@@ -80,7 +80,15 @@ export default function LoginPage() {
       toast.success('Đăng nhập thành công!');
       navigate('/', { replace: true });
     } catch (err) {
-      toast.error(getApiErrorMessage(err));
+      const status = err?.response?.status;
+      const raw = getApiErrorMessage(err);
+      const message =
+        status === 401 || /unauthorized|không đúng|không tồn tại|không tìm thấy/i.test(raw)
+          ? raw === 'Unauthorized' || !raw
+            ? 'Tài khoản hoặc mật khẩu không đúng'
+            : raw
+          : raw || 'Đăng nhập thất bại. Vui lòng thử lại.';
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }

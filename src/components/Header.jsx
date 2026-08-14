@@ -36,6 +36,14 @@ const pageTitles = {
     title: "Chất lượng CSKH",
     sub: "Đánh giá và theo dõi chất lượng chăm sóc khách hàng",
   },
+  "/pancake-test": {
+    title: "Lead Pancake",
+    sub: "Lead khách hàng theo từng kênh từ Pancake",
+  },
+  "/settings": {
+    title: "Cài đặt",
+    sub: "Cấu hình hệ thống, AI và kênh kết nối",
+  },
   "/employees": {
     title: "Nhân viên",
     sub: "Quản lý và đánh giá hiệu suất nhân viên",
@@ -57,6 +65,12 @@ export default function Header() {
 
   const { data: user } = useQuery({
     queryKey: ["currentUserProfile"],
+    queryFn: async () => {
+      const { apiClient } = await import("@/lib/axios");
+      const response = await apiClient.get("/auth/me");
+      return response.data.data;
+    },
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: convStats } = useQuery({
