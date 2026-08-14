@@ -179,7 +179,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     staleTime: 60_000,
     refetchOnWindowFocus: true,
-    refetchInterval: connected ? false : 8_000,
+    refetchInterval: connected ? 30_000 : 8_000,
   })
 
   const isRefreshingList = isFetching && !isFetchingNextPage && !isLoadingConversations

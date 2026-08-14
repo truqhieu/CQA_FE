@@ -124,6 +124,20 @@ function matchesConversationFilter(
   return true
 }
 
+function mergeConversationPatch(
+  prev: CskhInboxConversation,
+  patch: InboxRealtimeConversationPatch,
+): CskhInboxConversation {
+  const next = { ...prev, ...patch } as CskhInboxConversation
+  const prevAt = new Date(prev.lastMessageAt ?? 0).getTime()
+  const patchAt = patch.lastMessageAt ? new Date(patch.lastMessageAt).getTime() : 0
+  if (prevAt > 0 && patchAt > 0 && patchAt < prevAt) {
+    next.lastMessageAt = prev.lastMessageAt
+    if (patch.lastMessage == null) next.lastMessage = prev.lastMessage
+  }
+  return next
+}
+
 function patchFlatConversationList(
   prev: CskhInboxConversation[],
   patch: InboxRealtimeConversationPatch,
@@ -140,7 +154,7 @@ function patchFlatConversationList(
     return [row, ...prev].sort(sortConversationsByRecent)
   }
   const next = [...prev]
-  next[idx] = { ...next[idx], ...patch }
+  next[idx] = mergeConversationPatch(next[idx], patch)
   next.sort(sortConversationsByRecent)
   return next
 }
@@ -172,7 +186,8 @@ function patchInfiniteConversationList(
   }
 
   if (foundPage >= 0) {
-    const merged = { ...pages[foundPage].items[foundIdx], ...patch }
+    const prevRow = pages[foundPage].items[foundIdx]
+    const merged = mergeConversationPatch(prevRow, patch)
     const stillMatches = matchesConversationFilter(
       merged as CskhInboxConversation,
       pageIdFilter,
@@ -184,6 +199,12 @@ function patchInfiniteConversationList(
       pages[foundPage].items.splice(foundIdx, 1)
       action = 'removed-filter-mismatch'
     } else if (patch.lastMessageAt) {
+      const prevAt = new Date(prevRow.lastMessageAt ?? 0).getTime()
+      const nextAt = new Date(merged.lastMessageAt ?? 0).getTime()
+      if (nextAt < prevAt) {
+        pages[foundPage].items[foundIdx] = merged
+        action = 'ignored-stale-lastMessageAt'
+      } else {
       pages[foundPage].items.splice(foundIdx, 1)
       pages[0].items = [merged, ...pages[0].items.filter((c) => c.id !== patch.id)]
       pages[0].items.sort(sortConversationsByRecent)
@@ -196,6 +217,7 @@ function patchInfiniteConversationList(
         })
       }
       action = foundPage === 0 && foundIdx === 0 ? 'updated-top-in-place' : 'moved-to-top'
+      }
     } else {
       pages[foundPage].items[foundIdx] = merged
       action = 'updated-in-place'
