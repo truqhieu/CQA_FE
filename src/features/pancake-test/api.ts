@@ -179,6 +179,7 @@ export async function autoLabelPancakePage(
   opts?: { onlyWithContact?: boolean },
 ) {
   const { data } = await apiClient.post<{
+    queued?: boolean
     candidates: number
     scanned: number
     closed: number
@@ -187,7 +188,7 @@ export async function autoLabelPancakePage(
   }>(
     `/pancake/pages/${encodeURIComponent(pageId)}/auto-label`,
     { maxScan, onlyWithContact: opts?.onlyWithContact === true },
-    { timeout: 8 * 60 * 1000 },
+    { timeout: 30_000 },
   )
   return data
 }
