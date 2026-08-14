@@ -179,7 +179,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     staleTime: 60_000,
     refetchOnWindowFocus: true,
-    refetchInterval: connected ? 30_000 : 8_000,
+    refetchInterval: 3_000,
   })
 
   const isRefreshingList = isFetching && !isFetchingNextPage && !isLoadingConversations
@@ -358,7 +358,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
       }),
     enabled: !!selectedId,
     staleTime: 120_000,
-    refetchInterval: connected ? 20_000 : 8_000,
+    refetchInterval: 3_000,
   })
 
   const sidebarConversation: CskhInboxConversation | null = selectedConversation
