@@ -11,6 +11,7 @@ import { apiClient } from "@/lib/axios";
 import { restoreAuthAfterOAuth } from "@/lib/authSession";
 import PageLoader from "@/components/PageLoader";
 import { CSKH_PAGES_LITE_QUERY_KEY, fetchCskhPages } from "@/features/cskh-quality/api";
+import SapoOAuthBridge, { sapoOAuthBridgeRedirect } from "./pages/SapoOAuthBridge";
 
 function ProtectedLayout() {
   restoreAuthAfterOAuth();
@@ -87,6 +88,10 @@ function ProtectedLayout() {
 }
 
 export default function App() {
+  if (sapoOAuthBridgeRedirect()) {
+    return <SapoOAuthBridge />;
+  }
+
   const basename =
     import.meta.env.BASE_URL === "/"
       ? undefined

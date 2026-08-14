@@ -47,6 +47,7 @@ import {
   refreshCskhOAuth,
   setCskhPageEnabled,
   syncInboxFromGraph,
+  isAsyncInboxSync,
   type CskhPage,
   type CskhPagesResponse,
 } from '@/features/cskh-quality/api'
@@ -1851,7 +1852,11 @@ function ConfigTab() {
   const syncMut = useMutation({
     mutationFn: syncInboxFromGraph,
     onSuccess: (res) => {
-      toast.success(`Đã đồng bộ thành công ${res.synced} tin nhắn từ ${res.pageCount} kênh!`)
+      if (isAsyncInboxSync(res)) {
+        toast.info(res.message || 'Đang đồng bộ nền — làm mới danh sách sau vài phút')
+      } else {
+        toast.success(`Đã đồng bộ thành công ${res.synced} tin nhắn từ ${res.pageCount} kênh!`)
+      }
       qc.invalidateQueries({ queryKey: ['cskh'] })
     },
     onError: () => {

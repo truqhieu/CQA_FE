@@ -16,12 +16,13 @@ function formatViewTime(iso: string) {
   })
 }
 
-function ViewerRow({ viewer, highlight }: { viewer: CskhInboxViewer; highlight?: boolean }) {
+function ViewerRow({ viewer }: { viewer: CskhInboxViewer }) {
+  const chot = Boolean(viewer.hasChot)
   return (
     <li
       className={cn(
         'flex items-center gap-2.5 px-2.5 py-2 rounded-lg',
-        highlight ? 'bg-amber-50/80' : 'hover:bg-slate-50',
+        chot ? 'bg-violet-50/80' : 'bg-amber-50/50 hover:bg-amber-50/80',
       )}
     >
       {viewer.avatarUrl ? (
@@ -39,11 +40,14 @@ function ViewerRow({ viewer, highlight }: { viewer: CskhInboxViewer; highlight?:
         <p className="text-[12px] font-semibold text-slate-800 truncate">{viewer.fullName}</p>
         <p className="text-[10px] text-slate-400">Mở lúc {formatViewTime(viewer.viewedAt)}</p>
       </div>
-      {highlight && (
-        <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
-          Chưa chốt
-        </span>
-      )}
+      <span
+        className={cn(
+          'shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded',
+          chot ? 'text-violet-700 bg-violet-100' : 'text-amber-700 bg-amber-100',
+        )}
+      >
+        {chot ? 'Đã chốt' : 'Chưa chốt'}
+      </span>
     </li>
   )
 }
@@ -66,6 +70,15 @@ export function prefetchInboxViewHistory(
   })
 }
 
+export function invalidateInboxViewHistory(
+  qc: ReturnType<typeof useQueryClient>,
+  conversationId: string,
+) {
+  void qc.invalidateQueries({
+    queryKey: ['cskh', 'inbox', 'view-history', conversationId],
+  })
+}
+
 export function ConversationViewHistory({
   conversationId,
   pendingCount = 0,
@@ -74,7 +87,7 @@ export function ConversationViewHistory({
   const [open, setOpen] = useState(false)
   const qc = useQueryClient()
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['cskh', 'inbox', 'view-history', conversationId],
     queryFn: () => fetchInboxViewHistory(conversationId),
     enabled: Boolean(conversationId),
@@ -82,8 +95,9 @@ export function ConversationViewHistory({
     placeholderData: (prev) => prev,
   })
 
-  const withoutChot = data?.withoutChot ?? []
-  const badge = data?.withoutChot.length ?? pendingCount
+  const viewers = data?.viewers ?? []
+  const withoutChot = data?.withoutChot ?? viewers.filter((v) => !v.hasChot)
+  const badge = withoutChot.length || pendingCount
 
   const warmCache = () => prefetchInboxViewHistory(qc, conversationId)
 
@@ -100,7 +114,7 @@ export function ConversationViewHistory({
             open && 'text-indigo-600 bg-indigo-50',
             className,
           )}
-          title="Lịch sử mở hội thoại — xem ai chưa chốt"
+          title="Lịch sử mở hội thoại"
         >
           <History className="w-4 h-4" strokeWidth={2} />
           {badge > 0 && (
@@ -116,48 +130,30 @@ export function ConversationViewHistory({
             <History className="w-3.5 h-3.5 text-indigo-500" />
             <div>
               <p className="text-[12px] font-bold text-slate-800">Lịch sử mở hội thoại</p>
-              <p className="text-[10px] text-slate-500">NV đã vào xem nhưng chưa gán nhãn chốt</p>
+              <p className="text-[10px] text-slate-500">Ai đã mở và đã / chưa chốt đơn</p>
             </div>
           </div>
         </div>
 
-        <div className="max-h-[280px] overflow-y-auto p-1.5">
+        <div className="max-h-[320px] overflow-y-auto p-1.5">
           {isLoading && !data ? (
             <div className="flex items-center justify-center gap-2 py-8 text-slate-400">
               <Loader2 className="w-4 h-4 animate-spin" />
               <span className="text-[11px]">Đang tải...</span>
             </div>
-          ) : withoutChot.length === 0 ? (
+          ) : viewers.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-8 px-4 text-center">
               <UserX className="w-8 h-8 text-slate-300" />
-              <p className="text-[11px] font-medium text-slate-500">Không có NV nào mở mà chưa chốt</p>
-              <p className="text-[10px] text-slate-400">
-                Mọi người đã vào đều đã gán nhãn, hoặc chưa ai mở hội thoại này.
-              </p>
+              <p className="text-[11px] font-medium text-slate-500">Chưa ai mở hội thoại này</p>
             </div>
           ) : (
             <ul className="space-y-0.5">
-              {withoutChot.map((viewer) => (
-                <ViewerRow key={viewer.userId} viewer={viewer} highlight />
+              {viewers.map((viewer) => (
+                <ViewerRow key={viewer.userId} viewer={viewer} />
               ))}
             </ul>
           )}
         </div>
-
-        {data && data.viewers.some((v) => v.hasChot) && (
-          <div className="border-t border-slate-100 px-3 py-2 bg-slate-50/50">
-            <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">
-              Đã chốt
-            </p>
-            <ul className="space-y-0.5">
-              {data.viewers
-                .filter((v) => v.hasChot)
-                .map((viewer) => (
-                  <ViewerRow key={`chot-${viewer.userId}`} viewer={viewer} />
-                ))}
-            </ul>
-          </div>
-        )}
       </PopoverContent>
     </Popover>
   )

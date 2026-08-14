@@ -15,7 +15,7 @@ export default function KpiGrid({ items, columns = 4 }) {
         const Icon = kpi.icon;
         return (
           <div
-            key={kpi.label ?? i}
+            key={kpi.key ?? `${kpi.label}-${i}`}
             className="flex items-center gap-2.5 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm transition hover:shadow-md"
           >
             <div

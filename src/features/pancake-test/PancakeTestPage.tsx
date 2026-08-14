@@ -527,7 +527,9 @@ export default function PancakeTestPage() {
       const items = chatMessages
         .map((m, i) => ({ id: m.id || `idx-${i}`, text: stripHtml(m.message) }))
         .filter((m) => needsVietnameseTranslation(m.text))
-      if (!items.length) return { items: [] as Array<{ id: string; translatedText: string; sameLanguage: boolean }> }
+      if (!items.length) {
+        return { items: [] as Array<{ id: string; originalText: string; translatedText: string; sameLanguage: boolean }> }
+      }
       return translatePancakeMessages(items)
     },
     onSuccess: (data) => {

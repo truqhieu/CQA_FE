@@ -15,7 +15,8 @@ import {
   refreshCskhOAuth,
   setCskhPageEnabled,
   deleteCskhPage,
-  syncInboxFromGraph
+  syncInboxFromGraph,
+  isAsyncInboxSync,
 } from '@/features/cskh-quality/api';
 import { buildOAuthChannelReturnUrl } from '@/lib/authSession';
 import PancakeChannelsPanel from '@/features/pancake-test/PancakeChannelsPanel';
@@ -92,6 +93,10 @@ Các tiêu chí cần đánh giá:
     },
     onSuccess: (data) => {
       setIsSyncing(false);
+      if (isAsyncInboxSync(data)) {
+        toast.info(data.message || 'Đang đồng bộ nền — làm mới danh sách sau vài phút');
+        return;
+      }
       toast.success(`Đồng bộ thành công ${data.synced} tin nhắn từ ${data.pageCount} trang!`);
     },
     onError: (err) => {

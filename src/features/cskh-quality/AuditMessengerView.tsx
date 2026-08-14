@@ -347,6 +347,13 @@ function AuditScopeDivider({ auditDayLabel }: { auditDayLabel: string }) {
 function LiveBubble({ msg }: { msg: CskhInboxMessage & { attachmentUrls?: string[] } }) {
   if (isNoiseMessageText(msg.text)) return null
   const isStaff = msg.direction === 'outbound' || msg.senderType === 'staff'
+  const staffVi = isStaff
+    ? (msg.originalText || msg.translatedText || '').trim()
+    : (msg.translatedText || msg.originalText || '').trim()
+  const showStaffVi =
+    Boolean(staffVi) &&
+    staffVi !== (msg.text || '').trim() &&
+    (msg.messageType === 'text' || !msg.messageType)
   return (
     <div className={`flex ${isStaff ? 'justify-end' : 'justify-start'}`}>
       <div
@@ -364,6 +371,16 @@ function LiveBubble({ msg }: { msg: CskhInboxMessage & { attachmentUrls?: string
           messageType={msg.messageType}
           isStaff={isStaff}
         />
+        {showStaffVi && (
+          <p
+            className={`mt-1.5 border-t pt-1.5 text-[11.5px] leading-snug ${
+              isStaff ? 'border-white/25 text-blue-50/90' : 'border-slate-200 text-slate-500'
+            }`}
+          >
+            <span className="font-medium">{isStaff ? 'Tiếng Việt: ' : 'Dịch: '}</span>
+            {staffVi}
+          </p>
+        )}
         <p className={`mt-1 text-[10px] ${isStaff ? 'text-blue-100' : 'text-slate-400'}`}>
           {new Date(msg.sentAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
           {msg.status === 'pending' && ' · đang gửi'}

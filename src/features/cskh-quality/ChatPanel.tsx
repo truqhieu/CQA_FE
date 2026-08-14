@@ -7,6 +7,7 @@ import {
   fetchInboxMessages,
   fetchInboxMessagesProgressive,
   sendInboxMessage,
+  detectInboxConversationLang,
   notifyInboxTyping,
   markInboxAsUnread,
   type CskhInboxConversation,
@@ -101,8 +102,9 @@ export function ChatPanel({
 
   // Send message mutation
   const sendMut = useMutation({
-    mutationFn: (text: string) => sendInboxMessage(conversation.id, text),
-    onMutate: async (text) => {
+    mutationFn: ({ text, autoTranslate }: { text: string; autoTranslate?: boolean }) =>
+      sendInboxMessage(conversation.id, text, { autoTranslate }),
+    onMutate: async ({ text, autoTranslate }) => {
       // Cancel outgoing refetches so they don't overwrite our optimistic update
       await qc.cancelQueries({ queryKey: ['cskh', 'inbox', 'messages', conversation.id] })
 
@@ -115,6 +117,8 @@ export function ChatPanel({
         direction: 'outbound',
         senderType: 'staff',
         text,
+        originalText: autoTranslate ? text : null,
+        translatedText: autoTranslate ? text : null,
         messageType: 'text',
         attachmentUrl: null,
         sentAt: new Date().toISOString(),
@@ -142,7 +146,7 @@ export function ChatPanel({
 
       return { tempId, previousMessages }
     },
-    onSuccess: (newMessage, _text, context) => {
+    onSuccess: (newMessage, _vars, context) => {
       if (context?.tempId) {
         qc.setQueryData<{ conversation: CskhInboxConversation; messages: CskhInboxMessage[] }>(
           ['cskh', 'inbox', 'messages', conversation.id],
@@ -167,7 +171,7 @@ export function ChatPanel({
         })
       }
     },
-    onError: (error, text, context) => {
+    onError: (error, _vars, context) => {
       toast.error(getApiErrorMessage(error) || 'Gửi tin thất bại')
       // Rollback to previous state
       if (context?.previousMessages) {
@@ -199,6 +203,45 @@ export function ChatPanel({
       // Clear typing after 3 seconds
     }, 3000)
   }
+
+  // Phát hiện ngôn ngữ khách → lưu BE (một lần / hội thoại nếu chưa có)
+  useEffect(() => {
+    if (!hasRealMessages) return
+    if (conversationWithLabels.customerLang) return
+    let cancelled = false
+    void detectInboxConversationLang(conversation.id)
+      .then((res) => {
+        if (cancelled) return
+        qc.setQueryData<{ conversation: CskhInboxConversation; messages: CskhInboxMessage[] }>(
+          ['cskh', 'inbox', 'messages', conversation.id],
+          (prev) => {
+            if (!prev) return prev
+            return {
+              ...prev,
+              conversation: {
+                ...prev.conversation,
+                customerLang: res.customerLang,
+                customerLangLabel: res.customerLangLabel,
+              },
+            }
+          }
+        )
+        patchInboxConversationInCache(qc, {
+          id: conversation.id,
+          customerLang: res.customerLang,
+          customerLangLabel: res.customerLangLabel,
+        })
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [
+    hasRealMessages,
+    conversation.id,
+    conversationWithLabels.customerLang,
+    qc,
+  ])
 
   // Mark-as-read được xử lý khi chọn hội thoại (ChatMessengerPane)
 
@@ -277,6 +320,17 @@ export function ChatPanel({
     }
   }, [conversation.id, hasMoreOlder, messages, qc])
 
+  const translatingPending = useMemo(() => {
+    const noise = new Set(['[Ảnh]', '[Video]', '[Sticker]', '[attachment]'])
+    return displayMessages.some((m) => {
+      if (m.messageType && m.messageType !== 'text') return false
+      if (!m.text?.trim() || noise.has(m.text)) return false
+      const hasVi = Boolean((m.originalText || m.translatedText || '').trim())
+      if (hasVi) return false
+      return /[\u0E00-\u0E7F\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/.test(m.text)
+    })
+  }, [displayMessages])
+
   return (
     <div className="flex flex-col h-full bg-white overflow-hidden">
       {/* Header */}
@@ -300,6 +354,12 @@ export function ChatPanel({
             </h3>
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               <span className="text-[10px] text-slate-400 font-medium">Cuộc trò chuyện Facebook</span>
+              {translatingPending && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-indigo-50 text-indigo-600 leading-none">
+                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                  Đang dịch…
+                </span>
+              )}
               {conversationWithLabels.fromAd && (
                 <span className="inline-flex items-center px-1 py-0.5 rounded text-[8px] font-bold bg-gradient-to-r from-amber-400 to-orange-500 text-white leading-none">
                   Ads
@@ -378,8 +438,11 @@ export function ChatPanel({
         <>
           <ChatLabelBar conversation={conversationWithLabels} />
           <ChatMessageInput
-            onSend={async (text) => {
-              await sendMut.mutateAsync(text)
+            conversationId={conversation.id}
+            customerLang={conversationWithLabels.customerLang}
+            customerLangLabel={conversationWithLabels.customerLangLabel}
+            onSend={async (text, options) => {
+              await sendMut.mutateAsync({ text, autoTranslate: options?.autoTranslate })
             }}
             onTyping={handleTyping}
             disabled={sendMut.isPending}

@@ -26,6 +26,7 @@ import {
   fetchCskhBackfillStatus,
   CSKH_PAGES_LITE_QUERY_KEY,
 } from '@/features/cskh-quality/api';
+import { CskhPageAvatar } from '@/features/cskh-quality/cskhUi';
 
 function buildPagesPlaceholderFromLite(lite, selectedDate) {
   if (!lite?.pages?.length) return undefined;
@@ -175,12 +176,13 @@ const ChannelRow = memo(function ChannelRow({ channel, isActive, onSelect }) {
           : 'bg-transparent border-transparent hover:bg-slate-50'
       }`}
     >
-      <div className="relative w-10 h-10 rounded-full bg-slate-50 border border-slate-200/60 overflow-hidden flex-shrink-0 flex items-center justify-center">
-        {channel.pictureUrl ? (
-          <img src={channel.pictureUrl} alt={channel.name} className="w-full h-full object-cover" loading="lazy" />
-        ) : (
-          <PageTypeIcon type={channel.type} size={18} />
-        )}
+      <div className="relative w-10 h-10 flex-shrink-0">
+        <CskhPageAvatar
+          name={channel.name}
+          pictureUrl={channel.pictureUrl}
+          pageId={channel.id}
+          className="!h-10 !w-10 !rounded-full !ring-slate-200/60"
+        />
         <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${
           channel.enabled ? 'bg-emerald-500' : 'bg-slate-300'
         }`} />
@@ -295,7 +297,7 @@ export default function PagesPage() {
     if (backfillRunning || startingBackfill) return;
     setStartingBackfill(true);
     try {
-      await startCskhBackfill('all', { force });
+      await startCskhBackfill('all', { force, date: selectedDate });
       await refetchBackfill();
     } catch {
       // lỗi hiện qua trạng thái poll
@@ -401,7 +403,11 @@ docker pull viejhaf/cqa-be:latest && docker restart cqa-be`;
     name: p.pageName || `Trang #${p.pageId}`,
     type: getPageType(p.pageName),
     msgs: pageMessageCount(p),
-    newInbound: p.inboundMessageCount ?? 0,
+    // Tin mới đến: ưu tiên inbound đã sync từ Meta Graph theo ngày; fallback hội thoại messaging từ Meta Ads
+    newInbound:
+      (p.inboundMessageCount ?? 0) > 0
+        ? (p.inboundMessageCount ?? 0)
+        : (p.adMessagingConversations ?? 0),
     adSpend: p.adSpend,
     adSpendCurrency: p.adSpendCurrency,
     adCostPerConversation: p.adCostPerConversation,
@@ -437,8 +443,7 @@ docker pull viejhaf/cqa-be:latest && docker restart cqa-be`;
     });
   }, [performance, backfillStatus?.completedPageIds, backfillStatus?.currentPage, backfillScanActive]);
 
-  const totalNewInbound = inboundDaySummary?.totalInbound
-    ?? performance.reduce((sum, p) => sum + p.newInbound, 0);
+  const totalNewInbound = performance.reduce((sum, p) => sum + p.newInbound, 0);
   const totalAdSpend = inboundDaySummary?.totalAdSpend
     ?? performance.reduce((sum, p) => sum + (p.adSpend ?? 0), 0);
   const adSpendCurrency = inboundDaySummary?.adSpendCurrency
@@ -450,7 +455,7 @@ docker pull viejhaf/cqa-be:latest && docker restart cqa-be`;
     { 
       label: 'Tổng tin nhắn', 
       value: totalMsgs.toLocaleString(), 
-      sub: 'Từ khi kết nối', 
+      sub: selectedDateLabel, 
       isReal: true,
     },
     { 
@@ -643,8 +648,8 @@ docker pull viejhaf/cqa-be:latest && docker restart cqa-be`;
               <h3 className="font-bold text-slate-800">Thống kê tin nhắn theo ngày</h3>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Chọn ngày — hệ thống <strong className="text-slate-600">tự tải</strong> số tin khách gửi đến từ inbox đã đồng bộ.
-              Chi phí QC được cập nhật khi <strong>Quét đầy đủ</strong> xong và tự chạy lúc <strong>2:00 sáng</strong> (VN).
+              Chọn ngày rồi bấm <strong>Quét theo ngày</strong> — chỉ lấy tin nhắn Meta trong ngày đó (không quét cả lịch sử page).
+              Tin mới đến / chi tiêu QC / CP hội thoại lấy từ Meta; QC cũng tự chạy lúc <strong>2:00 sáng</strong> (VN).
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3 shrink-0">
@@ -669,7 +674,7 @@ docker pull viejhaf/cqa-be:latest && docker restart cqa-be`;
               type="button"
               onClick={() => handleStartBackfill(false)}
               disabled={backfillScanActive || startingBackfill || backfillCancelling}
-              title="Quét toàn bộ kênh từ Facebook — tự bỏ qua kênh đã quét nếu tạm dừng trước đó"
+              title={`Chỉ quét tin nhắn Meta trong ngày ${selectedDateLabel} — bỏ qua kênh đã quét nếu tạm dừng trước đó`}
               className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold disabled:opacity-50 cursor-pointer ${
                 backfillPausing
                   ? 'border border-amber-300 bg-amber-50 text-amber-800'
@@ -689,7 +694,7 @@ docker pull viejhaf/cqa-be:latest && docker restart cqa-be`;
                     ? 'Tiếp tục quét'
                     : startingBackfill
                       ? 'Đang khởi động...'
-                      : 'Quét đầy đủ'}
+                      : 'Quét theo ngày'}
             </button>
             {(backfillScanActive || backfillPaused || backfillPausing || backfillCancelling) && (
               <button
@@ -744,7 +749,7 @@ docker pull viejhaf/cqa-be:latest && docker restart cqa-be`;
                   : backfillPausing
                   ? 'Đang dừng — chờ xong kênh hiện tại'
                   : backfillScanActive
-                  ? 'Đang quét tin nhắn từ Facebook'
+                  ? `Đang quét tin nhắn Meta${backfillStatus?.scanDate ? ` ngày ${formatDateLabel(backfillStatus.scanDate)}` : selectedDateLabel ? ` ngày ${selectedDateLabel}` : ''}`
                   : backfillPaused
                     ? 'Đã tạm dừng — tiến độ đã lưu'
                     : 'Đã quét xong'}
@@ -948,7 +953,10 @@ docker pull viejhaf/cqa-be:latest && docker restart cqa-be`;
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/50 text-[10px] font-bold text-slate-400 uppercase tracking-wider select-none">
                   <th className="px-5 py-3.5">Page / Kênh</th>
-                  <th className="px-4 py-3.5 text-center">Tin nhắn</th>
+                  <th className="px-4 py-3.5 text-center">
+                    <div>Tin nhắn</div>
+                    <div className="text-[9px] font-semibold normal-case text-slate-300 mt-0.5">{selectedDateLabel}</div>
+                  </th>
                   <th className="px-4 py-3.5 text-center">
                     <div>Tin mới đến</div>
                     <div className="text-[9px] font-semibold normal-case text-slate-300 mt-0.5">{selectedDateLabel}</div>
@@ -957,7 +965,10 @@ docker pull viejhaf/cqa-be:latest && docker restart cqa-be`;
                     <div>Chi tiêu QC</div>
                     <div className="text-[9px] font-semibold normal-case text-slate-300 mt-0.5">{selectedDateLabel}</div>
                   </th>
-                  <th className="px-4 py-3.5 text-center">CP / hội thoại</th>
+                  <th className="px-4 py-3.5 text-center">
+                    <div>CP / hội thoại</div>
+                    <div className="text-[9px] font-semibold normal-case text-slate-300 mt-0.5">{selectedDateLabel}</div>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm text-slate-600">
@@ -987,12 +998,13 @@ docker pull viejhaf/cqa-be:latest && docker restart cqa-be`;
                   >
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
-                        <div className="relative w-8 h-8 rounded-full bg-slate-50 border border-slate-200/50 overflow-hidden flex-shrink-0 flex items-center justify-center">
-                          {p.pictureUrl ? (
-                            <img src={p.pictureUrl} alt={p.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <PageTypeIcon type={p.type} size={18} />
-                          )}
+                        <div className="relative w-8 h-8 flex-shrink-0">
+                          <CskhPageAvatar
+                            name={p.name}
+                            pictureUrl={p.pictureUrl}
+                            pageId={p.pageId}
+                            className="!h-8 !w-8 !rounded-full !ring-slate-200/50"
+                          />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">

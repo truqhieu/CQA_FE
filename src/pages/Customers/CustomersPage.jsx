@@ -1,358 +1,472 @@
-import { useState, useEffect } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import {
-  MagnifyingGlass, Funnel, Star, Sparkle, Phone, Envelope, MapPin, Calendar,
-  Users, Crown, UserPlus, SmileySad, Target, ArrowsCounterClockwise, Smiley,
-  SmileyMeh, Lightbulb, Warning
+  MagnifyingGlass,
+  Users,
+  UserPlus,
+  ShoppingCart,
+  CurrencyDollar,
+  ArrowsCounterClockwise,
+  Phone,
+  MapPin,
+  Calendar,
+  CaretLeft,
+  CaretRight,
+  ChatCircleText,
 } from '@phosphor-icons/react';
-import { customerKPIs, customerList } from '../../data/mockData';
 import AnalyticsShell from '@/components/analytics/AnalyticsShell';
 import KpiGrid from '@/components/analytics/KpiGrid';
+import { CskhPageAvatar } from '@/features/cskh-quality/cskhUi';
+import { fetchCustomersAnalytics } from '@/features/cskh-quality/api';
 
-const kpiIconMap = [
-  Users,                  // 👥 Tổng khách hàng
-  Crown,                  // ⭐ Khách VIP
-  UserPlus,               // 🆕 Khách mới
-  SmileySad,              // 😞 Khách tiêu cực
-  Target,                 // 🎯 AI Purchase Score
-  ArrowsCounterClockwise  // 🔄 Tỷ lệ quay lại
+const kpiMeta = [
+  { key: 'totalCustomers', icon: Users, color: 'var(--primary-500)' },
+  { key: 'newThisMonth', icon: UserPlus, color: '#22c55e' },
+  { key: 'totalOrders', icon: ShoppingCart, color: '#f59e0b' },
+  { key: 'totalSpend', icon: CurrencyDollar, color: '#16a34a' },
+  { key: 'repeatCustomers', icon: ArrowsCounterClockwise, color: '#ec4899' },
+  { key: 'withPhone', icon: Phone, color: '#3b82f6' },
 ];
 
-const kpiColors = [
-  'var(--primary-500)',
-  '#f59e0b',
-  '#22c55e',
-  '#ef4444',
-  '#a855f7',
-  '#ec4899'
-];
-
-function getSentimentIcon(s) {
-  switch (s) {
-    case '😊': return <Smiley size={16} weight="duotone" style={{ color: '#22c55e' }} />;
-    case '😐': return <SmileyMeh size={16} weight="duotone" style={{ color: '#f59e0b' }} />;
-    case '😞': return <SmileySad size={16} weight="duotone" style={{ color: '#ef4444' }} />;
-    default: return null;
+function formatDate(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleDateString('vi-VN');
+  } catch {
+    return '—';
   }
 }
 
+const CustomerRow = memo(function CustomerRow({ customer, selected, onSelect }) {
+  return (
+    <tr
+      onClick={() => onSelect(customer.id)}
+      className={selected ? 'bg-indigo-50/60' : 'hover:bg-slate-50/80'}
+      style={{ cursor: 'pointer' }}
+    >
+      <td>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <CskhPageAvatar
+            name={customer.name}
+            pictureUrl={customer.pictureUrl}
+            pageId={customer.pageId}
+            psid={customer.participantPsid}
+            className="!h-9 !w-9 !rounded-full"
+          />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>{customer.name}</div>
+            <div style={{ fontSize: 10, color: '#9ca3af' }}>
+              {customer.participantPsid
+                ? `PSID ···${customer.participantPsid.slice(-6)}`
+                : customer.id.slice(0, 18)}
+            </div>
+          </div>
+        </div>
+      </td>
+      <td>
+        <div style={{ fontSize: 12, fontWeight: 600 }}>{customer.channel}</div>
+        <div style={{ fontSize: 10, color: '#9ca3af' }}>{customer.source}</div>
+      </td>
+      <td>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {(customer.statusLabels?.length
+            ? customer.statusLabels
+            : [{ name: customer.status, color: '#6366f1' }]
+          ).map((lab) => (
+            <span
+              key={lab.name}
+              className="tag"
+              style={{
+                background: `${lab.color}18`,
+                color: lab.color,
+                border: `1px solid ${lab.color}33`,
+                fontSize: 10,
+                fontWeight: 700,
+              }}
+            >
+              {lab.name}
+            </span>
+          ))}
+        </div>
+      </td>
+      <td style={{ fontSize: 12 }}>{customer.phoneMasked || '—'}</td>
+      <td style={{ fontWeight: 600 }}>{customer.orderCountLabel}</td>
+      <td style={{ fontWeight: 600 }}>{customer.totalSpendLabel}</td>
+      <td style={{ fontSize: 12 }}>{formatDate(customer.lastOrderAt)}</td>
+    </tr>
+  );
+});
+
 export default function CustomersPage() {
-  const [anim, setAnim] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState('all');
-  const [selectedCustomerId, setSelectedCustomerId] = useState(1);
+  const [search, setSearch] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
+  const [pageId, setPageId] = useState('');
+  const [status, setStatus] = useState('');
+  const [page, setPage] = useState(1);
+  const [selectedId, setSelectedId] = useState(null);
+  const pageSize = 20;
 
   useEffect(() => {
-    setTimeout(() => setAnim(true), 200);
-  }, []);
+    const t = setTimeout(() => {
+      setAppliedSearch(search.trim());
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [search]);
 
-  const getStatusColor = (s) => {
-    switch (s) {
-      case 'VIP': return '#4f46e5';
-      case 'Nóng': return '#ef4444';
-      case 'Tiềm năng': return '#16a34a';
-      case 'Lạnh': return '#6b7280';
-      case 'Toxic': return 'var(--orange-500)';
-      default: return '#4b5563';
-    }
-  };
+  useEffect(() => {
+    setPage(1);
+  }, [pageId, status]);
 
-  const getStatusBg = (s) => {
-    switch (s) {
-      case 'VIP': return '#eef2ff';
-      case 'Nóng': return '#fef2f2';
-      case 'Tiềm năng': return '#f0fdf4';
-      case 'Lạnh': return '#f9fafb';
-      case 'Toxic': return 'var(--orange-100)';
-      default: return '#f9fafb';
-    }
-  };
-
-  const filteredCustomers = customerList.filter(c => {
-    const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          c.id.toString().includes(searchQuery) ||
-                          c.source.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    if (activeTab === 'all') return matchesSearch;
-    if (activeTab === 'vip') return matchesSearch && c.status === 'VIP';
-    if (activeTab === 'hot') return matchesSearch && c.status === 'Nóng';
-    if (activeTab === 'potential') return matchesSearch && c.status === 'Tiềm năng';
-    if (activeTab === 'cold') return matchesSearch && c.status === 'Lạnh';
-    if (activeTab === 'toxic') return matchesSearch && c.status === 'Toxic';
-    return matchesSearch;
+  const { data, isLoading, isError, error, isFetching, isPlaceholderData } = useQuery({
+    queryKey: ['cskh', 'customers', appliedSearch, pageId, status, page, pageSize],
+    queryFn: () =>
+      fetchCustomersAnalytics({
+        q: appliedSearch || undefined,
+        pageId: pageId || undefined,
+        status: status || undefined,
+        page,
+        pageSize,
+      }),
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
   });
 
-  const selectedCustomer = customerList.find(c => c.id === selectedCustomerId) || customerList[0];
+  const items = data?.items ?? [];
+  const channels = data?.channels ?? [];
+  const statuses = data?.statuses ?? [];
+  const pagination = data?.pagination ?? { page: 1, pageSize, total: 0, totalPages: 1 };
 
-  const kpiItems = customerKPIs.map((kpi, i) => ({
-    ...kpi,
-    icon: kpiIconMap[i],
-    color: kpiColors[i],
-    changePositive: !kpi.change.includes('↓'),
-  }));
+  const selected = useMemo(
+    () => items.find((c) => c.id === selectedId) ?? items[0] ?? null,
+    [items, selectedId],
+  );
+
+  useEffect(() => {
+    if (!selectedId && items[0]) setSelectedId(items[0].id);
+    if (selectedId && items.length && !items.some((c) => c.id === selectedId)) {
+      setSelectedId(items[0]?.id ?? null);
+    }
+  }, [items, selectedId]);
+
+  const kpiItems = useMemo(() => {
+    const list = data?.kpis ?? [];
+    return kpiMeta.map((meta) => {
+      const kpi = list.find((k) => k.key === meta.key);
+      return {
+        key: meta.key,
+        label: kpi?.label ?? '…',
+        value: kpi?.value ?? (isLoading && !data ? '…' : '0'),
+        change: '',
+        sub: kpi?.sub,
+        icon: meta.icon,
+        color: meta.color,
+      };
+    });
+  }, [data?.kpis, isLoading, data]);
 
   return (
-    <AnalyticsShell>
-    <div className="flex h-full min-h-0 flex-col gap-4">
-      <KpiGrid items={kpiItems} columns={6} />
-
-      <div style={{ display: 'flex', gap: '14px', flex: 1, minHeight: 0 }}>
-        {/* Left - Customer List */}
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col" style={{ flex: 1.6, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '12px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <div style={{ fontWeight: 700, fontSize: '15px', color: '#1f2937' }}>Danh sách khách hàng</div>
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <button style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', border: '1px solid #e5e7eb', background: '#fff', color: '#4b5563' }}>
-                <Funnel size={12} /> Lọc nâng cao
-              </button>
-              <button style={{ padding: '4px 10px', borderRadius: '4px', fontSize: '12px', background: '#4f46e5', color: '#fff', fontWeight: 600 }}>
-                + Thêm khách hàng
-              </button>
+    <AnalyticsShell demo={false}>
+      <div style={{ display: 'flex', gap: 14, height: '100%' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14, overflow: 'auto', minWidth: 0 }}>
+          {isError ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              Không tải được danh sách khách hàng: {error?.message || 'Lỗi không xác định'}
             </div>
-          </div>
+          ) : null}
 
-          {/* Search and Filters */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '5px 8px' }}>
-              <MagnifyingGlass size={14} style={{ color: '#9ca3af' }} />
-              <input 
-                placeholder="Tìm khách hàng (tên, id, nguồn)..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ flex: 1, background: 'transparent', fontSize: '12.5px', color: '#374151' }} 
-              />
+          <KpiGrid items={kpiItems} columns={6} />
+
+          <div
+            className="rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col"
+            style={{ opacity: isFetching && isPlaceholderData ? 0.72 : 1, transition: 'opacity .15s' }}
+          >
+            <div className="card-title">
+              <span>
+                Danh sách khách hàng
+                {isFetching ? (
+                  <span className="ml-2 text-[10px] font-normal text-slate-400">Đang tải…</span>
+                ) : null}
+              </span>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '4px 8px',
+                    background: '#f9fafb',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 6,
+                  }}
+                >
+                  <MagnifyingGlass size={12} style={{ color: '#9ca3af' }} />
+                  <input
+                    placeholder="Tìm tên, SĐT, kênh..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    style={{ background: 'transparent', fontSize: 11, width: 160 }}
+                  />
+                </div>
+                <select
+                  value={pageId}
+                  onChange={(e) => setPageId(e.target.value)}
+                  style={{
+                    padding: '4px 8px',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    maxWidth: 200,
+                  }}
+                >
+                  <option value="">Tất cả kênh</option>
+                  {channels.map((c) => (
+                    <option key={c.pageId} value={c.pageId}>
+                      {c.pageName} ({c.customerCount})
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  style={{
+                    padding: '4px 8px',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 6,
+                    fontSize: 11,
+                  }}
+                >
+                  <option value="">Tất cả trạng thái</option>
+                  {statuses.map((s) => (
+                    <option key={s.name} value={s.name}>
+                      {s.name} ({s.count})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-          </div>
 
-          <div style={{ display: 'flex', gap: '4px', marginBottom: '8px', overflowX: 'auto', paddingBottom: '2px' }}>
-            {[
-              { key: 'all', label: 'Tất cả' },
-              { key: 'vip', label: 'Khách VIP' },
-              { key: 'hot', label: 'Nóng (Mua ngay)' },
-              { key: 'potential', label: 'Tiềm năng' },
-              { key: 'cold', label: 'Lạnh' },
-              { key: 'toxic', label: 'Toxic / Khiếu nại' },
-            ].map(t => (
-              <button 
-                key={t.key} 
-                onClick={() => setActiveTab(t.key)}
-                style={{ 
-                  padding: '4px 10px', 
-                  borderRadius: '4px', 
-                  fontSize: '12px', 
-                  fontWeight: 500,
-                  background: activeTab === t.key ? '#4f46e5' : '#f9fafb',
-                  color: activeTab === t.key ? '#fff' : '#4b5563',
-                  border: activeTab === t.key ? '1px solid #4f46e5' : '1px solid #e5e7eb',
-                  whiteSpace: 'nowrap'
-                }}
+            <div style={{ display: 'flex', gap: 6, padding: '0 12px 10px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setPageId('')}
+                className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold ${
+                  !pageId ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
               >
-                {t.label}
+                Tất cả kênh
               </button>
-            ))}
-          </div>
+              {channels.slice(0, 8).map((c) => (
+                <button
+                  key={c.pageId}
+                  type="button"
+                  onClick={() => setPageId(c.pageId)}
+                  className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold truncate max-w-[160px] ${
+                    pageId === c.pageId
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                  title={c.pageName}
+                >
+                  {c.pageName}
+                </button>
+              ))}
+            </div>
 
-          {/* Table */}
-          <div style={{ flex: 1, overflow: 'auto' }}>
-            <table className="data-table" style={{ minWidth: '960px' }}>
+            <table className="data-table">
               <thead>
                 <tr>
                   <th>Khách hàng</th>
-                  <th>Quốc gia</th>
-                  <th>Nguồn</th>
+                  <th>Kênh</th>
                   <th>Trạng thái</th>
-                  <th>AI Purchase Score</th>
-                  <th>Cảm xúc</th>
-                  <th>Tổng mua</th>
+                  <th>SĐT</th>
                   <th>Số đơn</th>
+                  <th>Tổng mua</th>
                   <th>Mua cuối</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredCustomers.map((c) => (
-                  <tr 
-                    key={c.id} 
-                    onClick={() => setSelectedCustomerId(c.id)}
-                    style={{ 
-                      cursor: 'pointer', 
-                      background: selectedCustomerId === c.id ? '#eef2ff' : 'transparent',
-                      borderLeft: selectedCustomerId === c.id ? '3px solid #4f46e5' : '3px solid transparent'
-                    }}
-                  >
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--primary-500), var(--primary-300))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#fff', fontWeight: 600 }}>
-                          {c.name.split(' ').pop().substring(0, 2).toUpperCase()}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: '12.5px', color: '#1f2937' }}>{c.name}</div>
-                          <div style={{ fontSize: '10px', color: '#9ca3af' }}>#{c.id}</div>
-                        </div>
-                      </div>
+                {isLoading && !data ? (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: 'center', padding: 24, color: '#9ca3af' }}>
+                      Đang tải…
                     </td>
-                    <td><span style={{ fontSize: '14px' }}>{c.country}</span></td>
-                    <td style={{ fontSize: '12px', color: '#4b5563' }}>{c.source}</td>
-                    <td>
-                      <span className="tag" style={{ background: getStatusBg(c.status), color: getStatusColor(c.status) }}>
-                        {c.status}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <div style={{ width: '36px', background: '#f3f4f6', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
-                          <div style={{ width: `${c.purchaseScore}%`, background: c.purchaseScore >= 80 ? '#22c55e' : c.purchaseScore >= 50 ? '#f59e0b' : '#ef4444', height: '100%' }} />
-                        </div>
-                        <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#374151' }}>{c.purchaseScore}</span>
-                      </div>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {getSentimentIcon(c.sentiment)}
-                      </div>
-                    </td>
-                    <td style={{ fontWeight: 600, fontSize: '12px' }}>{c.totalSpent}</td>
-                    <td style={{ textAlign: 'center', fontSize: '12px' }}>{c.orders}</td>
-                    <td style={{ fontSize: '11px', color: '#6b7280' }}>{c.lastPurchase}</td>
                   </tr>
-                ))}
+                ) : items.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: 'center', padding: 24, color: '#9ca3af' }}>
+                      Chưa có khách nào từ đơn đã chốt. Tạo đơn từ hội thoại để xuất hiện tại đây.
+                    </td>
+                  </tr>
+                ) : (
+                  items.map((c) => (
+                    <CustomerRow
+                      key={c.id}
+                      customer={c}
+                      selected={selected?.id === c.id}
+                      onSelect={setSelectedId}
+                    />
+                  ))
+                )}
               </tbody>
             </table>
+
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginTop: 8,
+                fontSize: 11,
+                color: '#6b7280',
+                padding: '0 4px 4px',
+              }}
+            >
+              <span>
+                Hiển thị{' '}
+                {pagination.total === 0
+                  ? '0'
+                  : `${(pagination.page - 1) * pagination.pageSize + 1} - ${Math.min(
+                      pagination.page * pagination.pageSize,
+                      pagination.total,
+                    )}`}{' '}
+                trong {pagination.total.toLocaleString('vi-VN')} khách
+              </span>
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                <button
+                  type="button"
+                  disabled={page <= 1 || isFetching}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  style={{
+                    width: 28,
+                    height: 24,
+                    borderRadius: 4,
+                    background: '#f3f4f6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: page <= 1 ? 0.4 : 1,
+                  }}
+                >
+                  <CaretLeft size={12} />
+                </button>
+                <span style={{ fontWeight: 600 }}>
+                  {pagination.page} / {pagination.totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={page >= pagination.totalPages || isFetching}
+                  onClick={() => setPage((p) => p + 1)}
+                  style={{
+                    width: 28,
+                    height: 24,
+                    borderRadius: 4,
+                    background: '#f3f4f6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: page >= pagination.totalPages ? 0.4 : 1,
+                  }}
+                >
+                  <CaretRight size={12} />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Right - Customer Details & AI Insight */}
-        <div style={{ width: '310px', minWidth: '310px', display: 'flex', flexDirection: 'column', gap: '12px', overflow: 'auto' }}>
-          {/* Detail card */}
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col animate-in fade-in slide-in-from-bottom-4" style={{ padding: '14px', animationDelay: '100ms' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid #f3f4f6', paddingBottom: '6px' }}>
-              <div style={{ fontWeight: 700, fontSize: '13.5px', color: '#1f2937' }}>Chi tiết khách hàng</div>
-              <span className="tag tag-purple">ID #{selectedCustomer.id}</span>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
-              <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'linear-gradient(135deg, #4f46e5, var(--primary-400))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '21px', color: '#fff', fontWeight: 700 }}>
-                {selectedCustomer.name.split(' ').pop().substring(0, 2).toUpperCase()}
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '15px', fontWeight: 700, color: '#111827' }}>{selectedCustomer.name}</div>
-                <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center', marginTop: '2px' }}>
-                  <span className="tag" style={{ background: getStatusBg(selectedCustomer.status), color: getStatusColor(selectedCustomer.status) }}>{selectedCustomer.status}</span>
-                  <span style={{ fontSize: '12px', color: '#6b7280' }}>{selectedCustomer.country}</span>
+        <div
+          style={{
+            width: 280,
+            minWidth: 280,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+            overflow: 'auto',
+          }}
+        >
+          {selected ? (
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col p-4 gap-3">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <CskhPageAvatar
+                  name={selected.name}
+                  pictureUrl={selected.pictureUrl}
+                  pageId={selected.pageId}
+                  psid={selected.participantPsid}
+                  className="!h-12 !w-12 !rounded-full"
+                />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{selected.name}</div>
+                  <div style={{ fontSize: 11, color: '#6b7280' }}>{selected.channel}</div>
                 </div>
               </div>
-            </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: '#f9fafb', padding: '10px', borderRadius: '8px', marginBottom: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
-                <Phone size={12} style={{ color: '#9ca3af' }} />
-                <span style={{ color: '#6b7280' }}>Số điện thoại:</span>
-                <strong style={{ color: '#374151', marginLeft: 'auto' }}>0987 *** 321</strong>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {(selected.statusLabels?.length
+                  ? selected.statusLabels
+                  : [{ name: selected.status, color: '#6366f1' }]
+                ).map((lab) => (
+                  <span
+                    key={lab.name}
+                    className="tag"
+                    style={{
+                      background: `${lab.color}18`,
+                      color: lab.color,
+                      border: `1px solid ${lab.color}33`,
+                      fontSize: 10,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {lab.name}
+                  </span>
+                ))}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
-                <Envelope size={12} style={{ color: '#9ca3af' }} />
-                <span style={{ color: '#6b7280' }}>Email:</span>
-                <strong style={{ color: '#374151', marginLeft: 'auto' }}>m***@gmail.com</strong>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
-                <MapPin size={12} style={{ color: '#9ca3af' }} />
-                <span style={{ color: '#6b7280' }}>Kênh mua:</span>
-                <strong style={{ color: '#374151', marginLeft: 'auto' }}>{selectedCustomer.source}</strong>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
-                <Calendar size={12} style={{ color: '#9ca3af' }} />
-                <span style={{ color: '#6b7280' }}>Mua cuối:</span>
-                <strong style={{ color: '#374151', marginLeft: 'auto' }}>{selectedCustomer.lastPurchase}</strong>
-              </div>
-            </div>
 
-            <div style={{ fontWeight: 700, fontSize: '12.5px', color: '#1f2937', marginBottom: '8px' }}>Thống kê mua sắm</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-              <div style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
-                <div style={{ fontSize: '10px', color: '#9ca3af' }}>TỔNG CHI TIÊU</div>
-                <div style={{ fontSize: '14px', fontWeight: 800, color: '#16a34a', marginTop: '2px' }}>{selectedCustomer.totalSpent}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#374151' }}>
+                  <Phone size={14} className="text-slate-400" />
+                  <span>{selected.phoneMasked || 'Chưa có SĐT'}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, color: '#374151' }}>
+                  <MapPin size={14} className="text-slate-400 shrink-0 mt-0.5" />
+                  <span>{selected.address || 'Chưa có địa chỉ'}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#374151' }}>
+                  <Calendar size={14} className="text-slate-400" />
+                  <span>Mua cuối: {formatDate(selected.lastOrderAt)}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#374151' }}>
+                  <ChatCircleText size={14} className="text-slate-400" />
+                  <span>Nguồn: {selected.source}</span>
+                </div>
               </div>
-              <div style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
-                <div style={{ fontSize: '10px', color: '#9ca3af' }}>TỔNG ĐƠN HÀNG</div>
-                <div style={{ fontSize: '14px', fontWeight: 800, color: '#4f46e5', marginTop: '2px' }}>{selectedCustomer.orders} đơn</div>
-              </div>
-            </div>
 
-            {/* AI Prediction Section */}
-            <div style={{ border: '1px solid #e0e7ff', background: 'linear-gradient(135deg, #eef2ff 0%, #fff 100%)', padding: '10px', borderRadius: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#3730a3', fontWeight: 700, fontSize: '12px', marginBottom: '6px' }}>
-                <Sparkle size={14} weight="duotone" style={{ color: '#4f46e5' }} /> Dự báo hành vi bằng AI
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11.5px' }}>
-                <div style={{ display: 'flex', justifySelf: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: '#4b5563' }}>Khả năng mua lại trong 30 ngày:</span>
-                  <strong style={{ color: '#16a34a', marginLeft: 'auto' }}>{selectedCustomer.purchaseScore >= 80 ? 'Cao (85%)' : selectedCustomer.purchaseScore >= 50 ? 'Trung bình (52%)' : 'Thấp (15%)'}</strong>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
+                  <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600 }}>Tổng chi tiêu</div>
+                  <div style={{ fontSize: 14, fontWeight: 800, marginTop: 2 }}>{selected.totalSpendLabel}</div>
                 </div>
-                <div style={{ display: 'flex', justifySelf: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: '#4b5563' }}>Giá trị vòng đời ước tính (CLV):</span>
-                  <strong style={{ color: '#3730a3', marginLeft: 'auto' }}>{selectedCustomer.status === 'VIP' ? '25.000.000đ' : '5.500.000đ'}</strong>
-                </div>
-                <div style={{ display: 'flex', justifySelf: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: '#4b5563' }}>Rủi ro rời bỏ (Churn Risk):</span>
-                  <strong style={{ color: selectedCustomer.status === 'Toxic' ? '#dc2626' : '#16a34a', marginLeft: 'auto' }}>{selectedCustomer.status === 'Toxic' ? 'Rất cao (90%)' : selectedCustomer.status === 'VIP' ? 'Rất thấp (< 5%)' : 'Thấp (12%)'}</strong>
-                </div>
-                <div style={{ marginTop: '4px', padding: '6px', background: '#fff', borderRadius: '4px', fontSize: '10.5px', color: '#6b7280', borderLeft: '3px solid var(--primary-500)', display: 'flex', alignItems: 'flex-start', gap: '4px' }}>
-                  {selectedCustomer.status === 'VIP' && (
-                    <>
-                      <Lightbulb size={12} weight="duotone" style={{ color: '#f59e0b', flexShrink: 0, marginTop: '1px' }} />
-                      <span>Khách VIP. Đề xuất gửi mã ưu đãi 15% vào dịp sinh nhật.</span>
-                    </>
-                  )}
-                  {selectedCustomer.status === 'Nóng' && (
-                    <>
-                      <Lightbulb size={12} weight="duotone" style={{ color: '#f59e0b', flexShrink: 0, marginTop: '1px' }} />
-                      <span>Đang có ý định mua cao. Nhân viên cần trả lời ngay trong 5 phút.</span>
-                    </>
-                  )}
-                  {selectedCustomer.status === 'Toxic' && (
-                    <>
-                      <Warning size={12} weight="duotone" style={{ color: '#ef4444', flexShrink: 0, marginTop: '1px' }} />
-                      <span>Cảnh báo: Khách phàn nàn về bảo hành. Chuyển cấp quản lý hỗ trợ gấp.</span>
-                    </>
-                  )}
-                  {selectedCustomer.status === 'Tiềm năng' && (
-                    <>
-                      <Lightbulb size={12} weight="duotone" style={{ color: '#f59e0b', flexShrink: 0, marginTop: '1px' }} />
-                      <span>Quan tâm sản phẩm mới. Đề xuất gửi video feedback thực tế.</span>
-                    </>
-                  )}
-                  {selectedCustomer.status === 'Lạnh' && (
-                    <>
-                      <Lightbulb size={12} weight="duotone" style={{ color: '#f59e0b', flexShrink: 0, marginTop: '1px' }} />
-                      <span>Đã lâu không tương tác. Đề xuất gửi tin nhắn chúc Tết/ngày lễ kèm voucher.</span>
-                    </>
-                  )}
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
+                  <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600 }}>Tổng đơn</div>
+                  <div style={{ fontSize: 14, fontWeight: 800, marginTop: 2 }}>{selected.orderCountLabel}</div>
                 </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6 text-center text-sm text-slate-400">
+              Chọn khách hàng để xem chi tiết
+            </div>
+          )}
 
-          {/* AI Customer Insights */}
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col animate-in fade-in slide-in-from-bottom-4" style={{ padding: '14px', animationDelay: '250ms' }}>
-            <div style={{ fontWeight: 700, fontSize: '13px', color: '#1f2937', marginBottom: '8px' }}>AI Khách hàng Insight tháng này</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
-              {[
-                { title: 'Tỷ lệ khách VIP quay lại mua sắm tăng', desc: 'Đạt 38.5% (tăng 4.2% so với tháng trước nhờ chiến dịch tri ân)', positive: true },
-                { title: 'Lượng khiếu nại về bảo hành giảm', desc: 'Chỉ còn 37 trường hợp, giảm 12% do xưởng tối ưu quy trình xử lý', positive: true },
-                { title: 'Khách từ Facebook Ads chốt nhanh nhất', desc: 'Thời gian chốt trung bình là 18 phút từ khi phát sinh chat', positive: true },
-                { title: 'Khách hàng có xu hướng hỏi size', desc: 'Có 32% cuộc hội thoại hỏi về bảng size đo ngón tay', positive: false }
-              ].map((insight, idx) => (
-                <div key={idx} style={{ display: 'flex', gap: '6px', padding: '5px 0', borderBottom: idx < 3 ? '1px solid #f3f4f6' : 'none' }}>
-                  <span style={{ color: insight.positive ? '#22c55e' : 'var(--primary-500)', flexShrink: 0 }}>●</span>
-                  <div>
-                    <div style={{ fontWeight: 600, color: '#1f2937' }}>{insight.title}</div>
-                    <div style={{ fontSize: '10.5px', color: '#6b7280', marginTop: '1px' }}>{insight.desc}</div>
-                  </div>
-                </div>
-              ))}
+          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 shadow-sm p-3">
+            <div className="card-title" style={{ marginBottom: 8 }}>Ghi chú</div>
+            <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.45 }}>
+              Danh sách lấy từ đơn đã tạo khi chốt hàng trong hội thoại. Trạng thái lấy từ nhãn hội thoại
+              (Đã chốt, Follow…). Lọc theo kênh = Page Facebook đã gắn với đơn.
             </div>
           </div>
         </div>
       </div>
-    </div>
     </AnalyticsShell>
   );
 }

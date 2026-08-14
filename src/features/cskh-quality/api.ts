@@ -247,6 +247,277 @@ export function getCskhOAuthStartUrl(returnUrl?: string): string {
   return `${base}/cskh/oauth/start?returnUrl=${encodeURIComponent(ret)}`
 }
 
+export function getCskhSapoOAuthStartUrl(): string {
+  const base = (import.meta.env.VITE_API_URL || 'http://localhost:3003/api/v1').replace(/\/$/, '')
+  return `${base}/cskh/sapo/oauth/start`
+}
+
+export interface CskhSapoStatus {
+  oauthReady: boolean
+  apiReady: boolean
+  ordersReady?: boolean
+  dbCatalogReady?: boolean
+  catalogSource?: 'api' | 'db' | null
+  redirectUri: string | null
+  authorizeUrl: string | null
+  oauthStartUrl?: string | null
+  variantCount: number
+}
+
+export interface CskhSapoCatalogItem {
+  productId: number
+  variantId: number
+  name: string
+  productTitle?: string
+  variantTitle: string
+  category?: string | null
+  material?: string | null
+  unit?: string | null
+  price: number
+  priceLabel: string
+  sku: string | null
+  imageUrl: string | null
+  inStock: boolean
+  inventoryQuantity: number | null
+}
+
+export async function fetchCskhSapoCatalog(): Promise<{
+  source: 'api' | 'db' | null
+  items: CskhSapoCatalogItem[]
+}> {
+  const { data } = await apiClient.get<{ source: 'api' | 'db' | null; items: CskhSapoCatalogItem[] }>(
+    '/cskh/sapo/catalog',
+  )
+  return data
+}
+
+export async function fetchCskhSapoStatus(): Promise<CskhSapoStatus> {
+  const { data } = await apiClient.get<CskhSapoStatus>('/cskh/sapo/status')
+  return data
+}
+
+export interface ProductsAnalyticsKpi {
+  key: string
+  label: string
+  value: string
+  raw: number | null
+  change: string
+  available: boolean
+  sub?: string
+}
+
+export interface ProductsAnalyticsItem {
+  productId: number
+  code: string
+  name: string
+  category: string
+  material: string | null
+  craftType?: string | null
+  imageUrl: string | null
+  size?: string
+  color?: string
+  price?: number | null
+  priceLabel?: string
+  variantCount?: number
+  variantHint?: string | null
+  messageCount?: number | null
+  messageCountLabel?: string
+  responseRate?: number | null
+  responseRateLabel?: string
+  closeRate?: number | null
+  closeRateLabel?: string
+  unitsSold: number
+  unitsSoldLabel: string
+  revenue: number
+  revenueLabel: string
+  revenuePerUnit?: number | null
+  revenuePerUnitLabel?: string
+  aiScore?: number | null
+  aiScoreLabel?: string
+  trend?: 'up' | 'down' | 'flat'
+}
+
+export interface OmsOption {
+  id: string
+  name: string
+}
+
+export async function fetchOmsCategories(): Promise<OmsOption[]> {
+  const { data } = await apiClient.get<OmsOption[]>('/cskh/oms/categories')
+  return data
+}
+
+export async function fetchOmsLocations(): Promise<OmsOption[]> {
+  const { data } = await apiClient.get<OmsOption[]>('/cskh/oms/locations')
+  return data
+}
+
+export interface ProductOperationsDashboard {
+  month: string
+  kpis: {
+    ordered: number
+    orderedChangePct: number
+    shipped: number
+    shippedChangePct: number
+    shipToOrderRate: number
+    stockoutCount: number
+    stuckOrdersTotal: number
+  }
+  topOrdered: Array<{
+    rank: number
+    name: string
+    category: string
+    count: number
+    qty: number
+    changePct: number
+  }>
+  stockouts: Array<{
+    name: string
+    sku: string
+    shortage: number
+    available: number
+    stuckOrders: number
+  }>
+  stockoutListCount: number
+  stockoutsPagination: { page: number; pageSize: number; total: number; totalPages: number }
+  topRevenueProducts: Array<{ name: string; sku: string; quantity: number; revenue: number }>
+  extraMetrics: Array<{ key: string; label: string; value: string; caption: string }>
+}
+
+export async function fetchProductOperations(params?: {
+  month?: string
+  categoryId?: string
+  locationId?: string
+  topLimit?: number
+  stockoutPage?: number
+  stockoutPageSize?: number
+}): Promise<ProductOperationsDashboard> {
+  const { data } = await apiClient.get<ProductOperationsDashboard>('/cskh/products/operations', {
+    params,
+  })
+  return data
+}
+
+export interface ProductsAnalyticsDashboard {
+  source: 'database'
+  kpis: ProductsAnalyticsKpi[]
+  categories: string[]
+  items: ProductsAnalyticsItem[]
+  pagination: { page: number; pageSize: number; total: number; totalPages: number }
+  topByRevenue: Array<{
+    rank: number
+    productId: number
+    name: string
+    imageUrl: string | null
+    unitsSold: number
+    unitsSoldLabel: string
+    revenue: number
+    revenueLabel: string
+  }>
+  statusBreakdown: Array<{
+    key: string
+    label: string
+    count: number
+    pct: number
+    color: string
+  }>
+  charts: {
+    topSold: Array<{ productId: number; name: string; unitsSold: number; revenue: number }>
+    topCloseRate: Array<{ productId: number; name: string; closeRate: number }>
+  }
+  insights: string[]
+  naLabel: string
+}
+
+export async function fetchProductsAnalytics(params?: {
+  q?: string
+  category?: string
+  page?: number
+  pageSize?: number
+}): Promise<ProductsAnalyticsDashboard> {
+  const { data } = await apiClient.get<ProductsAnalyticsDashboard>('/cskh/products/analytics', {
+    params,
+  })
+  return data
+}
+
+export interface CustomersAnalyticsKpi {
+  key: string
+  label: string
+  value: string
+  sub?: string
+}
+
+export interface CustomersAnalyticsItem {
+  id: string
+  conversationId: string | null
+  participantPsid: string | null
+  name: string
+  pictureUrl: string | null
+  pageId: string | null
+  pageName: string | null
+  channel: string
+  source: string
+  fromAd: boolean
+  status: string
+  statusLabels: Array<{ name: string; color: string }>
+  phone: string | null
+  phoneMasked: string | null
+  address: string | null
+  orderCount: number
+  orderCountLabel: string
+  totalSpend: number
+  totalSpendLabel: string
+  lastOrderAt: string
+  firstOrderAt: string
+  lastMessageAt: string | null
+}
+
+export interface CustomersAnalyticsDashboard {
+  source: 'database'
+  kpis: CustomersAnalyticsKpi[]
+  channels: Array<{ pageId: string; pageName: string; customerCount: number }>
+  statuses: Array<{ name: string; color: string; count: number }>
+  items: CustomersAnalyticsItem[]
+  pagination: { page: number; pageSize: number; total: number; totalPages: number }
+}
+
+export async function fetchCustomersAnalytics(params?: {
+  q?: string
+  pageId?: string
+  status?: string
+  page?: number
+  pageSize?: number
+}): Promise<CustomersAnalyticsDashboard> {
+  const { data } = await apiClient.get<CustomersAnalyticsDashboard>('/cskh/customers', {
+    params,
+  })
+  return data
+}
+
+export interface CreateSapoOrderPayload {
+  customerName: string
+  phone?: string
+  address?: string
+  note?: string
+  psid?: string
+  conversationId?: string
+  lineItems: Array<{ variantId: number; quantity: number }>
+}
+
+export interface CreateSapoOrderResult {
+  orderId: number
+  orderName: string | null
+  totalPrice: string | null
+  adminUrl: string | null
+  source?: 'sapo_api' | 'db'
+}
+
+export async function createSapoOrder(payload: CreateSapoOrderPayload): Promise<CreateSapoOrderResult> {
+  const { data } = await apiClient.post<CreateSapoOrderResult>('/cskh/sapo/orders', payload)
+  return data
+}
+
 export async function fetchCskhPages(options?: {
   month?: string
   date?: string
@@ -444,24 +715,27 @@ export interface CskhInsightPageRow {
   pageId: string
   pageName: string
   auditCount: number
-  avgScore: number
-  passRate: number
-  riskRate: number
-  positiveRate: number
+  audited?: boolean
+  avgScore: number | null
+  passRate: number | null
+  riskRate: number | null
+  positiveRate: number | null
   scoreChange: number | null
-  status: 'good' | 'warning' | 'critical'
+  status: 'good' | 'warning' | 'critical' | 'pending'
   statusLabel: string
   topIssue: string | null
   topKeyword: string | null
 }
 
 export interface CskhInsightDashboard {
-  source: 'chat_audits'
+  source: 'chat_audits' | 'cskh_inbox'
   period: { from: string; to: string; label: string }
   selectedPageId?: string | null
   selectedPageName?: string | null
+  audited?: boolean
+  auditCount?: number
   totalAnalyzed: number
-  avgScore: number
+  avgScore: number | null
   intro: string
   kpis: CskhInsightKpi[]
   customerConcerns: {
@@ -607,7 +881,7 @@ export interface CskhAdInsights {
   localConversationCount: number
   unavailableReason: string | null
   isPageLevelEstimate?: boolean
-  insightsScope?: 'ad' | 'campaign' | 'page' | null
+  insightsScope?: 'ad' | 'campaign' | 'adset' | 'page' | null
   /** @deprecated */
   isAccountLevelEstimate?: boolean
   estimateNote?: string | null
@@ -618,6 +892,8 @@ export interface CskhAdInsights {
     spend: number | null
     messagingConversations: number | null
   }>
+  metaFetchedAt?: string | null
+  refreshedFromMeta?: boolean
 }
 
 export async function fetchConversationAdInsights(
@@ -669,6 +945,8 @@ export interface CskhInboxConversation {
   unreadCount: number
   awaitingLabel?: boolean
   updatedAt: string
+  customerLang?: string | null
+  customerLangLabel?: string | null
   labels?: CskhInboxLabel[]
   labelsLocked?: boolean
   viewers?: CskhInboxViewer[]
@@ -681,6 +959,11 @@ export interface CskhInboxMessage {
   direction: 'inbound' | 'outbound'
   senderType: 'customer' | 'staff'
   text: string
+  /** NV gõ (VI) khi đã auto-dịch outbound */
+  originalText?: string | null
+  /** Bản dịch VI để NV đọc (inbound) hoặc mirror originalText (outbound) */
+  translatedText?: string | null
+  sourceLang?: string | null
   messageType?: 'text' | 'image' | 'sticker' | string
   attachmentUrl?: string | null
   sentAt: string
@@ -929,11 +1212,43 @@ export async function resolveInboxMessageMedia(messageId: string): Promise<{
 
 export async function sendInboxMessage(
   conversationId: string,
-  text: string
+  text: string,
+  options?: { autoTranslate?: boolean }
 ): Promise<CskhInboxMessage> {
   const { data } = await apiClient.post<CskhInboxMessage>(
     `/cskh/inbox/conversations/${conversationId}/send`,
-    { text }
+    { text, autoTranslate: Boolean(options?.autoTranslate) }
+  )
+  return data
+}
+
+export async function previewInboxTranslate(
+  conversationId: string,
+  text: string,
+  targetLang?: string
+): Promise<{
+  originalText: string
+  translatedText: string
+  detectedLang: string
+  targetLang: string
+  customerLang: string | null
+  customerLangLabel: string | null
+  sameLanguage: boolean
+}> {
+  const { data } = await apiClient.post(
+    `/cskh/inbox/conversations/${conversationId}/translate-preview`,
+    { text, targetLang }
+  )
+  return data
+}
+
+export async function detectInboxConversationLang(conversationId: string): Promise<{
+  customerLang: string
+  customerLangLabel: string
+  confidence: string
+}> {
+  const { data } = await apiClient.post(
+    `/cskh/inbox/conversations/${conversationId}/detect-lang`
   )
   return data
 }
@@ -956,10 +1271,18 @@ export async function markInboxAsUnread(conversationId: string): Promise<{ marke
   return data
 }
 
-export async function syncInboxFromGraph(
-  pageId?: string
-): Promise<{ synced: number; pageCount: number }> {
-  const { data } = await apiClient.post<{ synced: number; pageCount: number }>('/cskh/inbox/sync', {
+export type SyncInboxFromGraphResult =
+  | { synced: number; pageCount: number; okPages?: number; failedPages?: number }
+  | { started: true; syncing: true; message: string }
+
+export function isAsyncInboxSync(
+  res: SyncInboxFromGraphResult,
+): res is { started: true; syncing: true; message: string } {
+  return 'syncing' in res && res.syncing === true
+}
+
+export async function syncInboxFromGraph(pageId?: string): Promise<SyncInboxFromGraphResult> {
+  const { data } = await apiClient.post<SyncInboxFromGraphResult>('/cskh/inbox/sync', {
     pageId,
   })
   return data
@@ -978,19 +1301,22 @@ export interface CskhBackfillStatus {
   okPages: number
   errorPages: Array<{ page: string; error: string; pageId?: string }>
   completedPageIds?: string[]
+  /** Ngày VN đang quét (YYYY-MM-DD). Null/undefined = quét toàn bộ. */
+  scanDate?: string | null
   startedAt: string | null
   finishedAt: string | null
   jobId?: string | null
 }
 
-/** Bắt đầu / tiếp tục quét đầy đủ. force=true bỏ qua tiến độ cũ, quét lại từ đầu. */
+/** Bắt đầu / tiếp tục quét. force=true bỏ qua tiến độ cũ. date=YYYY-MM-DD chỉ quét tin trong ngày đó. */
 export async function startCskhBackfill(
   scope: 'empty' | 'all' = 'all',
-  options?: { force?: boolean }
+  options?: { force?: boolean; date?: string }
 ): Promise<CskhBackfillStatus> {
   const { data } = await apiClient.post<CskhBackfillStatus>('/cskh/inbox/backfill', {
     scope,
     force: options?.force === true,
+    date: options?.date || undefined,
   })
   return data
 }

@@ -1,5 +1,6 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import {
   ArrowLeft,
   ChartBar,
@@ -25,30 +26,38 @@ import { fetchCskhInsights } from '@/features/cskh-quality/api';
 
 const kpiIconMap = [Lightbulb, Warning, TrendUp, MagnifyingGlass];
 const kpiColors = ['var(--primary-500)', '#ef4444', '#22c55e', '#f59e0b'];
+/** Debounce đổi ngày để không spam /cskh/insights khi kéo date picker. */
+const RANGE_DEBOUNCE_MS = 700;
+/** Cache FE dài hơn — khớp cache BE ~180s, giảm gọi lại khi đổi kênh rồi quay lại. */
+const INSIGHT_STALE_MS = 180_000;
+
+const QUALITY_HINT = (
+  <>
+    Chưa có dữ liệu audit — vào mục{' '}
+    <Link to="/quality" style={{ color: '#4f46e5', fontWeight: 700, textDecoration: 'underline' }}>
+      Chất lượng CSKH
+    </Link>{' '}
+    để chạy audit AI cho kênh này.
+  </>
+);
 
 const STATUS_STYLE = {
   good: { bg: '#f0fdf4', border: '#bbf7d0', color: '#15803d' },
   warning: { bg: '#fffbeb', border: '#fde68a', color: '#b45309' },
   critical: { bg: '#fef2f2', border: '#fecaca', color: '#b91c1c' },
+  pending: { bg: '#f8fafc', border: '#e2e8f0', color: '#64748b' },
 };
 
 function formatYmd(d) {
-  return d.toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(d);
 }
 
 function defaultRange() {
   const to = new Date();
   const from = new Date();
-  from.setDate(from.getDate() - 29);
+  // 14 ngày mặc định — đủ insight, nhẹ hơn 30 ngày rõ rệt.
+  from.setDate(from.getDate() - 13);
   return { from: formatYmd(from), to: formatYmd(to) };
-}
-
-function isRealStrengthLabel(label) {
-  const t = (label || '').toLowerCase();
-  if (!t || t.length < 10) return false;
-  if (/kh[oô]ng c[oó] (ưu đi[ểe]m|đi[ểe]m mạnh)/.test(t)) return false;
-  if (/chưa có (ưu đi[ểe]m|phản hồi)/.test(t)) return false;
-  return true;
 }
 
 function StatusTag({ status, label }) {
@@ -71,7 +80,14 @@ function StatusTag({ status, label }) {
   );
 }
 
-function ScoreBar({ score }) {
+function ScoreBar({ score, audited = true }) {
+  if (!audited || score == null) {
+    return (
+      <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', fontStyle: 'italic' }}>
+        Chưa audit
+      </span>
+    );
+  }
   const color = score >= 70 ? '#22c55e' : score >= 55 ? '#f59e0b' : '#ef4444';
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 100 }}>
@@ -151,9 +167,14 @@ function ChannelCard({ page, onSelect }) {
         <div style={{ fontSize: 13, fontWeight: 800, color: '#111827', lineHeight: 1.3 }}>{page.pageName}</div>
         <StatusTag status={page.status} label={page.statusLabel} />
       </div>
-      <ScoreBar score={page.avgScore} />
+      <ScoreBar score={page.avgScore} audited={page.audited !== false} />
       <div style={{ marginTop: 6, fontSize: 11, color: '#6b7280' }}>
-        {page.auditCount.toLocaleString('vi-VN')} HT · Rủi ro {page.riskRate}% · QA {page.passRate}%
+        {page.auditCount.toLocaleString('vi-VN')} HT
+        {page.audited !== false ? (
+          <> · Rủi ro {page.riskRate}% · QA {page.passRate}%</>
+        ) : (
+          <> · Chưa có điểm QA</>
+        )}
       </div>
       {page.topIssue && (
         <div style={{ marginTop: 6, fontSize: 11, color: s.color, fontWeight: 600 }}>{page.topIssue}</div>
@@ -205,33 +226,63 @@ function ContentLoading({ label }) {
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
         <ArrowCounterClockwise size={28} weight="bold" className="animate-spin" style={{ color: '#4f46e5' }} />
         <p style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{label}</p>
-        <p style={{ fontSize: 11, color: '#9ca3af' }}>Có thể mất 10–15 giây tùy khoảng ngày</p>
+        <p style={{ fontSize: 11, color: '#9ca3af' }}>Có thể mất vài giây tùy khoảng ngày</p>
       </div>
     </div>
   );
 }
 
-function dataMatchesSelection(data, selectedPageId) {
+function dataMatchesSelection(data, selectedPageId, range) {
   if (!data) return false;
   const sid = selectedPageId || '';
   const dataSid = data.selectedPageId || '';
-  return sid === dataSid;
+  if (sid !== dataSid) return false;
+  // placeholderData giữ data kỳ cũ — phải khớp khoảng ngày đang applied.
+  if (range?.from && data.period?.from && data.period.from !== range.from) return false;
+  if (range?.to && data.period?.to && data.period.to !== range.to) return false;
+  return true;
 }
 
 export default function AIInsightPage() {
-  const [range, setRange] = useState(defaultRange);
+  const initialRange = useMemo(() => defaultRange(), []);
+  const [draftRange, setDraftRange] = useState(initialRange);
+  const [appliedRange, setAppliedRange] = useState(initialRange);
   const [selectedPageId, setSelectedPageId] = useState('');
   const [pageDirectory, setPageDirectory] = useState([]);
+  const rangeDebounceRef = useRef(null);
+
+  // Chỉ commit khoảng ngày sau khi user dừng chỉnh — tránh nhiều request chồng nhau.
+  useEffect(() => {
+    if (draftRange.from === appliedRange.from && draftRange.to === appliedRange.to) return;
+    if (rangeDebounceRef.current) clearTimeout(rangeDebounceRef.current);
+    rangeDebounceRef.current = setTimeout(() => {
+      if (draftRange.from && draftRange.to && draftRange.from <= draftRange.to) {
+        setAppliedRange(draftRange);
+      }
+    }, RANGE_DEBOUNCE_MS);
+    return () => {
+      if (rangeDebounceRef.current) clearTimeout(rangeDebounceRef.current);
+    };
+  }, [draftRange, appliedRange.from, appliedRange.to]);
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
-    queryKey: ['cskh', 'insights', range.from, range.to, selectedPageId || 'all'],
+    queryKey: ['cskh', 'insights', appliedRange.from, appliedRange.to, selectedPageId || 'all'],
     queryFn: () =>
       fetchCskhInsights({
-        auditDateFrom: range.from,
-        auditDateTo: range.to,
+        auditDateFrom: appliedRange.from,
+        auditDateTo: appliedRange.to,
         pageId: selectedPageId || undefined,
       }),
-    staleTime: 60_000,
+    staleTime: INSIGHT_STALE_MS,
+    gcTime: INSIGHT_STALE_MS * 2,
+    placeholderData: (previousData) => previousData,
+    retry: (failureCount, err) => {
+      const status = err?.response?.status;
+      // Ít retry hơn khi 503 — tránh đua connection pool với inbox sync.
+      if (status === 503 && failureCount < 2) return true;
+      return failureCount < 1;
+    },
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 4000),
   });
 
   useEffect(() => {
@@ -239,12 +290,26 @@ export default function AIInsightPage() {
     if (list?.length) setPageDirectory(list);
   }, [data?.pageDirectory, data?.byPage?.all]);
 
-  const dataReady = dataMatchesSelection(data, selectedPageId);
-  const showContentLoading = !dataReady && (isLoading || isFetching) && !isError;
-
+  const dataReady = dataMatchesSelection(data, selectedPageId, appliedRange);
   const isChannelDetail = Boolean(selectedPageId);
-  const byPage = dataReady ? data?.byPage : null;
   const pageOptions = pageDirectory.length > 0 ? pageDirectory : (data?.pageDirectory ?? data?.byPage?.all ?? []);
+  // Đổi ngày / đang fetch → loading full UI bên dưới (không giữ list cũ).
+  const showContentLoading = !dataReady && (isLoading || isFetching) && !isError;
+  const isRefreshing = isFetching && !isLoading;
+  const rangePending =
+    draftRange.from !== appliedRange.from || draftRange.to !== appliedRange.to;
+
+  const applyRangeNow = () => {
+    if (rangeDebounceRef.current) clearTimeout(rangeDebounceRef.current);
+    if (!draftRange.from || !draftRange.to || draftRange.from > draftRange.to) return;
+    if (draftRange.from === appliedRange.from && draftRange.to === appliedRange.to) {
+      void refetch();
+      return;
+    }
+    setAppliedRange(draftRange);
+  };
+
+  const byPage = dataReady && !isChannelDetail ? data?.byPage : null;
 
   const selectedPageName = useMemo(() => {
     if (!selectedPageId) return null;
@@ -264,12 +329,17 @@ export default function AIInsightPage() {
   }, [data, dataReady]);
 
   const highCloseFactors = useMemo(
-    () => (dataReady ? (data?.closeRateFactors?.highClose ?? []).filter((f) => isRealStrengthLabel(f.label)) : []),
+    () => (dataReady ? (data?.closeRateFactors?.highClose ?? []) : []),
     [data, dataReady],
   );
 
   const lostOrderFactors = useMemo(
     () => (dataReady ? (data?.closeRateFactors?.lostOrders ?? []) : []),
+    [data, dataReady],
+  );
+
+  const topProducts = useMemo(
+    () => (dataReady ? (data?.products ?? []).slice(0, 3) : []),
     [data, dataReady],
   );
 
@@ -306,7 +376,9 @@ export default function AIInsightPage() {
               </div>
               {dataReady && data && isChannelDetail && (
                 <div style={{ fontSize: 11, color: '#9ca3af' }}>
-                  Điểm TB {data.avgScore}/100 · {data.totalAnalyzed.toLocaleString('vi-VN')} bản ghi
+                  {data.audited && data.avgScore != null
+                    ? `Điểm TB ${data.avgScore}/100 · ${data.auditCount ?? 0} audit · ${data.totalAnalyzed.toLocaleString('vi-VN')} hội thoại inbox`
+                    : `Chưa audit · ${data.totalAnalyzed.toLocaleString('vi-VN')} hội thoại inbox`}
                 </div>
               )}
               {dataReady && !isChannelDetail && byPage?.summary && (
@@ -315,6 +387,9 @@ export default function AIInsightPage() {
                   {byPage.summary.critical} cần xử lý
                 </div>
               )}
+              {showContentLoading && !isChannelDetail && (
+                <div style={{ fontSize: 11, color: '#6366f1' }}>Đang tải dữ liệu theo khoảng ngày…</div>
+              )}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 8, fontSize: 12 }}>
               <label>
@@ -322,13 +397,14 @@ export default function AIInsightPage() {
                 <select
                   value={selectedPageId}
                   onChange={(e) => setSelectedPageId(e.target.value)}
-                  disabled={showContentLoading}
-                  style={{ ...inputStyle, maxWidth: 220, marginLeft: 4, opacity: showContentLoading ? 0.7 : 1 }}
+                  disabled={showContentLoading && pageOptions.length === 0}
+                  style={{ ...inputStyle, maxWidth: 220, marginLeft: 4, opacity: showContentLoading && pageOptions.length === 0 ? 0.7 : 1 }}
                 >
                   <option value="">— Chọn kênh —</option>
                   {pageOptions.map((p) => (
                     <option key={p.pageId} value={p.pageId}>
-                      {p.pageName} ({p.avgScore}đ)
+                      {p.pageName}
+                      {p.audited === false ? ' (Chưa audit)' : ` (${p.avgScore}đ)`}
                     </option>
                   ))}
                 </select>
@@ -337,8 +413,8 @@ export default function AIInsightPage() {
                 Từ{' '}
                 <input
                   type="date"
-                  value={range.from}
-                  onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))}
+                  value={draftRange.from}
+                  onChange={(e) => setDraftRange((r) => ({ ...r, from: e.target.value }))}
                   style={inputStyle}
                 />
               </label>
@@ -346,14 +422,14 @@ export default function AIInsightPage() {
                 Đến{' '}
                 <input
                   type="date"
-                  value={range.to}
-                  onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))}
+                  value={draftRange.to}
+                  onChange={(e) => setDraftRange((r) => ({ ...r, to: e.target.value }))}
                   style={inputStyle}
                 />
               </label>
-              <button type="button" onClick={() => refetch()} disabled={isFetching} style={btnOutline}>
+              <button type="button" onClick={applyRangeNow} disabled={isFetching} style={btnOutline}>
                 <ArrowCounterClockwise size={14} className={isFetching ? 'animate-spin' : ''} />
-                {isFetching ? 'Đang tải...' : 'Làm mới'}
+                {isRefreshing ? 'Đang tải...' : rangePending ? 'Áp dụng' : 'Làm mới'}
               </button>
             </div>
           </div>
@@ -390,8 +466,21 @@ export default function AIInsightPage() {
         {showContentLoading && !isError && <ContentLoading label={loadingLabel} />}
 
         {isError && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            Không tải được insight: {error?.message || 'Lỗi không xác định'}
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 space-y-2">
+            <p>
+              Không tải được insight:{' '}
+              {error?.response?.data?.message ||
+                error?.message ||
+                'Lỗi không xác định'}
+            </p>
+            {error?.response?.status === 503 && (
+              <p className="text-xs text-red-600/90">
+                Hệ thống đang đồng bộ inbox — trang sẽ tự thử lại, hoặc bấm «Tải lại» sau vài giây.
+              </p>
+            )}
+            <button type="button" onClick={() => refetch()} style={btnOutline}>
+              Tải lại
+            </button>
           </div>
         )}
 
@@ -448,9 +537,11 @@ export default function AIInsightPage() {
                           <tr key={p.pageId} style={{ cursor: 'pointer' }} onClick={() => setSelectedPageId(p.pageId)}>
                             <td style={{ fontWeight: 600, maxWidth: 180 }}>{p.pageName}</td>
                             <td><StatusTag status={p.status} label={p.statusLabel} /></td>
-                            <td><ScoreBar score={p.avgScore} /></td>
-                            <td>{p.passRate}%</td>
-                            <td style={{ color: p.riskRate >= 75 ? '#dc2626' : undefined, fontWeight: p.riskRate >= 75 ? 700 : 400 }}>{p.riskRate}%</td>
+                            <td><ScoreBar score={p.avgScore} audited={p.audited !== false} /></td>
+                            <td>{p.audited === false ? '—' : `${p.passRate}%`}</td>
+                            <td style={{ color: p.riskRate >= 75 ? '#dc2626' : undefined, fontWeight: p.riskRate >= 75 ? 700 : 400 }}>
+                              {p.audited === false ? '—' : `${p.riskRate}%`}
+                            </td>
                             <td>{p.auditCount.toLocaleString('vi-VN')}</td>
                             <td style={{ fontSize: 11, color: '#6b7280', maxWidth: 220 }}>{p.topIssue || '—'}</td>
                             <td><CaretRight size={14} style={{ color: '#9ca3af' }} /></td>
@@ -463,7 +554,7 @@ export default function AIInsightPage() {
               </div>
             )}
 
-            {isChannelDetail && (
+            {dataReady && data && isChannelDetail && (
               <>
             <KpiGrid items={kpiItems} columns={4} />
 
@@ -485,6 +576,12 @@ export default function AIInsightPage() {
               <div className="rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col" style={{ flex: 1.2, minWidth: 320 }}>
                 <div className="card-title">Yếu tố chốt & mất đơn</div>
                 <div className="factors-grid" style={{ padding: '0 14px 14px' }}>
+                  {!data.audited ? (
+                    <div style={{ gridColumn: '1 / -1', fontSize: 12, color: '#9ca3af', padding: '10px 0', lineHeight: 1.5 }}>
+                      {QUALITY_HINT}
+                    </div>
+                  ) : (
+                    <>
                   <div className="factor-col">
                     <h4 style={{ color: '#16a34a', display: 'flex', alignItems: 'center', gap: 4 }}>
                       <CheckCircle size={14} weight="fill" />
@@ -499,7 +596,7 @@ export default function AIInsightPage() {
                       ))
                     ) : (
                       <div style={{ fontSize: 12, color: '#9ca3af', padding: '10px 0', lineHeight: 1.5 }}>
-                        Không có yếu tố nào giúp chốt cao
+                        Audit chưa ghi nhận ưu điểm nổi bật
                       </div>
                     )}
                   </div>
@@ -517,10 +614,12 @@ export default function AIInsightPage() {
                       ))
                     ) : (
                       <div style={{ fontSize: 12, color: '#9ca3af', padding: '10px 0', lineHeight: 1.5 }}>
-                        Không có lý do mất đơn nổi bật
+                        Audit chưa ghi nhận điểm yếu nổi bật
                       </div>
                     )}
                   </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -528,34 +627,45 @@ export default function AIInsightPage() {
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col">
               <div className="card-title">
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Sparkle size={14} weight="duotone" style={{ color: '#4f46e5' }} />
-                  Gợi ý content video
+                  <Diamond size={14} weight="duotone" style={{ color: '#f59e0b' }} />
+                  Top 3 sản phẩm khách hàng quan tâm nhiều nhất
                 </span>
               </div>
-              {(data.videoTopics ?? []).length > 0 ? (
+              {topProducts.length > 0 ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10, padding: '0 14px 14px' }}>
-                  {(data.videoTopics ?? []).map((item, i) => (
+                  {topProducts.map((item, i) => (
                     <div
-                      key={i}
+                      key={`${item.name}-${i}`}
                       style={{
                         border: '1px solid #e5e7eb',
                         borderRadius: 8,
-                        padding: 10,
-                        background: i === 0 ? '#eef2ff' : '#fff',
+                        padding: 12,
+                        background: i === 0 ? '#fffbeb' : '#fff',
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 5 }}>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: '#111827', lineHeight: 1.35 }}>{item.question}</div>
-                        <span style={{ fontSize: 12, fontWeight: 800, color: '#4f46e5', whiteSpace: 'nowrap' }}>{item.mentions} lần</span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: '#b45309', marginBottom: 4 }}>
+                            #{i + 1}
+                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: '#111827', lineHeight: 1.35 }}>
+                            {item.name}
+                          </div>
+                        </div>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: '#4f46e5', whiteSpace: 'nowrap' }}>
+                          {(item.visits ?? 0).toLocaleString('vi-VN')} lần
+                        </span>
                       </div>
-                      <div style={{ fontSize: 12, color: '#d97706', background: '#fffbeb', borderRadius: 6, padding: '5px 7px', fontWeight: 700 }}>
-                        {item.angle}
+                      <div style={{ fontSize: 11, color: '#6b7280', marginTop: 8 }}>
+                        Từ hội thoại inbox trong khoảng ngày đã chọn
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div style={{ padding: 24, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>Chưa có gợi ý</div>
+                <div style={{ padding: 24, textAlign: 'center', color: '#9ca3af', fontSize: 13, lineHeight: 1.5 }}>
+                  Chưa nhận diện được sản phẩm trong hội thoại inbox kỳ này.
+                </div>
               )}
             </div>
 
@@ -567,7 +677,8 @@ export default function AIInsightPage() {
                     <tr><th>Chủ đề</th><th>Lượt nhắc</th></tr>
                   </thead>
                   <tbody>
-                    {(data.products ?? []).map((p, i) => (
+                    {(data.products ?? []).length > 0 ? (
+                    (data.products ?? []).map((p, i) => (
                       <tr key={i}>
                         <td>
                           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -577,13 +688,21 @@ export default function AIInsightPage() {
                         </td>
                         <td>{p.visits.toLocaleString('vi-VN')}</td>
                       </tr>
-                    ))}
+                    ))
+                    ) : (
+                      <tr>
+                        <td colSpan={2} style={{ fontSize: 12, color: '#9ca3af', padding: 16, textAlign: 'center' }}>
+                          Chưa nhận diện được sản phẩm trong hội thoại — cần import catalog SP hoặc khách chưa nhắc tên SP cụ thể.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col" style={{ flex: 1, minWidth: 280 }}>
                 <div className="card-title">Cảm xúc khách hàng (AI)</div>
+                {data.audited ? (
                 <div className="sentiment-row" style={{ gap: 20, padding: '8px 16px 16px' }}>
                   <div className="sentiment-item">
                     <Smiley size={24} weight="duotone" style={{ color: '#22c55e' }} />
@@ -601,6 +720,11 @@ export default function AIInsightPage() {
                     <div className="sentiment-label">Tiêu cực</div>
                   </div>
                 </div>
+                ) : (
+                  <div style={{ padding: '16px 16px 20px', fontSize: 12, color: '#9ca3af', lineHeight: 1.5 }}>
+                    {QUALITY_HINT}
+                  </div>
+                )}
               </div>
             </div>
 

@@ -251,12 +251,29 @@ export function ChatListPanel({
   manualLoadMore = false,
 }: ChatListPanelProps) {
   const parentRef = useRef<HTMLDivElement>(null)
+  const prevTopIdRef = useRef<string | null>(null)
   // Cập nhật "Vừa xong" / "5p trước" mà không cần reload list
   const [, timeTick] = useState(0)
   useEffect(() => {
     const t = window.setInterval(() => timeTick((n: number) => n + 1), 30_000)
     return () => window.clearInterval(t)
   }, [])
+
+  // Tin mới đẩy lên đầu — cuộn lên nếu user đang xem gần đầu list.
+  useEffect(() => {
+    const topId = conversations[0]?.id ?? null
+    const scrollEl = parentRef.current
+    if (!topId || !scrollEl || topId === prevTopIdRef.current) {
+      prevTopIdRef.current = topId
+      return
+    }
+    const bumpedToTop = bumpedConversationIds.has(topId)
+    prevTopIdRef.current = topId
+    if (!bumpedToTop) return
+    if (scrollEl.scrollTop <= ROW_HEIGHT * 4) {
+      scrollEl.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [conversations, bumpedConversationIds])
 
   const rowCount = conversations.length + (hasNextPage ? 1 : 0)
 

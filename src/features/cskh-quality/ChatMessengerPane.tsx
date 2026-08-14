@@ -9,6 +9,7 @@ import {
   fetchCskhPages,
   CSKH_PAGES_LITE_QUERY_KEY,
   syncInboxFromGraph,
+  isAsyncInboxSync,
   fetchCustomerIntent,
   fetchInboxMessagesProgressive,
   fetchConversationAdInsights,
@@ -16,7 +17,6 @@ import {
   fetchInboxConversationsPage,
   fetchInboxConversationStats,
   fetchInboxLabels,
-  backfillInboxAdReferrals,
   type CskhInboxConversation,
   type CskhInboxConversationPage,
   type CskhInboxMessage,
@@ -27,7 +27,8 @@ import { ChatRightSidebar } from './ChatRightSidebar'
 import { prefetchInboxViewHistory } from './ConversationViewHistory'
 import { InboxLabelFilterPopover, type InboxLabelFilterValue } from './InboxLabelFilterPopover'
 import { useCskhInboxStream } from './useCskhInboxStream'
-import { patchInboxConversationInCache, isInboxMessagePreview } from './inboxRealtimeCache'
+import { patchInboxConversationInCache, isInboxMessagePreview, mergeInboxConversationPages } from './inboxRealtimeCache'
+import { inboxRtLog } from './inboxRealtimeDebug'
 import {
   Select,
   SelectContent,
@@ -44,6 +45,9 @@ type FilterTab = 'all' | 'unread' | 'ads' | 'normal'
 
 export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   const [selectedConversation, setSelectedConversation] = useState<CskhInboxConversation | null>(null)
+  const [adInsightsSelectGen, setAdInsightsSelectGen] = useState<{ id: string; gen: number } | null>(
+    null,
+  )
   const qc = useQueryClient()
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -68,37 +72,23 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   }, [selectedPageId, selectedConversation])
 
   const bumpTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const listHeadRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const onNewMessageRef = useRef<(conversationId: string) => void>(() => {})
   const [bumpedConversationIds, setBumpedConversationIds] = useState<Set<string>>(() => new Set())
-
-  const handleRealtimeMessage = useCallback((conversationId: string) => {
-    setBumpedConversationIds((prev) => new Set([...prev, conversationId]))
-    const existing = bumpTimeoutsRef.current.get(conversationId)
-    if (existing) clearTimeout(existing)
-    bumpTimeoutsRef.current.set(
-      conversationId,
-      setTimeout(() => {
-        setBumpedConversationIds((prev) => {
-          const next = new Set(prev)
-          next.delete(conversationId)
-          return next
-        })
-        bumpTimeoutsRef.current.delete(conversationId)
-      }, 2500),
-    )
-  }, [])
 
   useEffect(() => {
     const timeouts = bumpTimeoutsRef.current
     return () => {
       timeouts.forEach((t) => clearTimeout(t))
       timeouts.clear()
+      if (listHeadRefreshTimerRef.current) clearTimeout(listHeadRefreshTimerRef.current)
     }
   }, [])
 
   const { connected, typingConversationIds } = useCskhInboxStream({
     enabled: true,
     activeConversationId: selectedConversation?.id ?? null,
-    onNewMessage: handleRealtimeMessage,
+    onNewMessage: (conversationId) => onNewMessageRef.current(conversationId),
   })
 
   const { data: pagesData, isLoading: isLoadingPages } = useQuery({
@@ -195,9 +185,93 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   const isRefreshingList = isFetching && !isFetchingNextPage && !isLoadingConversations
 
   const allConversations = useMemo(
-    () => conversationPages?.pages.flatMap((p) => p.items) ?? [],
+    () => mergeInboxConversationPages(conversationPages?.pages),
     [conversationPages],
   )
+
+  const scheduleListHeadRefresh = useCallback(() => {
+    if (listHeadRefreshTimerRef.current) clearTimeout(listHeadRefreshTimerRef.current)
+    listHeadRefreshTimerRef.current = setTimeout(() => {
+      inboxRtLog('Safety refresh — fetch lại trang đầu list sau SSE')
+      void fetchInboxConversationsPage({
+        ...conversationFetchOpts,
+        search: debouncedSearch || undefined,
+        limit: 50,
+      })
+        .then((firstPage) => {
+          qc.setQueryData<InfiniteData<CskhInboxConversationPage>>(listQueryKey, (prev) => {
+            if (!prev?.pages?.length) {
+              return { pages: [firstPage], pageParams: [undefined] }
+            }
+            const byId = new Map<string, CskhInboxConversation>()
+            for (const c of firstPage.items) byId.set(c.id, c)
+            for (const c of prev.pages[0].items) {
+              const fromApi = byId.get(c.id)
+              if (!fromApi) {
+                byId.set(c.id, c)
+                continue
+              }
+              const localAt = new Date(c.lastMessageAt ?? 0).getTime()
+              const apiAt = new Date(fromApi.lastMessageAt ?? 0).getTime()
+              byId.set(c.id, localAt >= apiAt ? { ...fromApi, ...c } : fromApi)
+            }
+            const merged = [...byId.values()].sort(
+              (a, b) =>
+                new Date(b.lastMessageAt ?? 0).getTime() - new Date(a.lastMessageAt ?? 0).getTime(),
+            )
+            const pages = [...prev.pages]
+            pages[0] = { ...firstPage, items: merged }
+            return { ...prev, pages }
+          })
+        })
+        .catch((err: unknown) => {
+          inboxRtLog('Safety refresh failed', { error: String(err) })
+        })
+    }, 1200)
+  }, [qc, listQueryKey, conversationFetchOpts, debouncedSearch])
+
+  const handleRealtimeMessage = useCallback(
+    (conversationId: string) => {
+      inboxRtLog('UI bump highlight', { conversationId })
+      setBumpedConversationIds((prev) => new Set([...prev, conversationId]))
+      const existing = bumpTimeoutsRef.current.get(conversationId)
+      if (existing) clearTimeout(existing)
+      bumpTimeoutsRef.current.set(
+        conversationId,
+        setTimeout(() => {
+          setBumpedConversationIds((prev) => {
+            const next = new Set(prev)
+            next.delete(conversationId)
+            return next
+          })
+          bumpTimeoutsRef.current.delete(conversationId)
+        }, 2500),
+      )
+      scheduleListHeadRefresh()
+    },
+    [scheduleListHeadRefresh],
+  )
+
+  useEffect(() => {
+    onNewMessageRef.current = handleRealtimeMessage
+  }, [handleRealtimeMessage])
+
+  const wasStreamConnectedRef = useRef(false)
+  useEffect(() => {
+    if (connected && !wasStreamConnectedRef.current) {
+      inboxRtLog('SSE reconnected — refresh đầu list')
+      scheduleListHeadRefresh()
+    }
+    wasStreamConnectedRef.current = connected
+  }, [connected, scheduleListHeadRefresh])
+
+  useEffect(() => {
+    inboxRtLog(connected ? 'UI status: Live (SSE)' : 'UI status: Offline (SSE)', {
+      filter: `${pageKey}|${activeFilter}|${labelFilter}`,
+      search: debouncedSearch || '(none)',
+      listCount: allConversations.length,
+    })
+  }, [connected, pageKey, activeFilter, labelFilter, debouncedSearch, allConversations.length])
 
   const listEmptyHint = useMemo(() => {
     if (listError) return getApiErrorMessage(listErr) || 'Không tải được danh sách hội thoại'
@@ -225,25 +299,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
     }
   }, [listError, listErr])
 
-  // Lần đầu xem tất cả page: quét DB gắn tag Ads (Việt/Anh/Thái) rồi refresh list
-  useEffect(() => {
-    if (selectedPageId) return
-    let cancelled = false
-    void (async () => {
-      try {
-        const { updated } = await backfillInboxAdReferrals()
-        if (!cancelled && updated > 0) {
-          await qc.invalidateQueries({ queryKey: ['cskh', 'inbox', 'conversation-stats'] })
-          toast.success(`Đã nhận diện thêm ${updated} hội thoại từ quảng cáo`)
-        }
-      } catch {
-        /* backfill optional */
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [selectedPageId, qc])
+  // BE tự chạy ad-backfill khi tải danh sách — không gọi thêm từ FE (tránh tranh pool DB).
 
   const applyActiveFilter = useCallback((tab: FilterTab) => {
     startFilterTransition(() => {
@@ -270,6 +326,10 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
     mutationFn: () => syncInboxFromGraph(selectedPageId),
     onSuccess: (result) => {
       void qc.invalidateQueries({ queryKey: ['cskh', 'inbox', 'conversations'] })
+      if (isAsyncInboxSync(result)) {
+        toast.info(result.message || 'Đang đồng bộ nền — làm mới danh sách sau vài phút')
+        return
+      }
       toast.success(`Đã đồng bộ ${result.synced} tin nhắn từ ${result.pageCount} kênh`)
     },
     onError: () => {
@@ -320,13 +380,34 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
     staleTime: 180_000,
   })
 
-  const { data: adInsights, isLoading: isLoadingAdInsights } = useQuery({
-    queryKey: ['cskh', 'inbox', 'ad-insights', selectedId],
-    queryFn: ({ signal }) =>
-      selectedId ? fetchConversationAdInsights(selectedId, signal) : null,
-    enabled: shouldLoadAdInsights && !!selectedId && messagesReady,
-    staleTime: 300_000,
+  const adInsightsVisitGen =
+    selectedId && adInsightsSelectGen?.id === selectedId ? adInsightsSelectGen.gen : 0
+
+  const {
+    data: adInsights,
+    isLoading: isLoadingAdInsights,
+    isFetching: isFetchingAdInsights,
+    isPlaceholderData: isAdInsightsPlaceholder,
+  } = useQuery({
+    queryKey: ['cskh', 'inbox', 'ad-insights', selectedId, adInsightsVisitGen],
+    queryFn: ({ signal, queryKey }) => {
+      const convId = queryKey[3] as string
+      const visitGen = Number(queryKey[4] ?? 1)
+      if (!convId) return null
+      return fetchConversationAdInsights(convId, signal, visitGen >= 2)
+    },
+    enabled: shouldLoadAdInsights && !!selectedId && messagesReady && adInsightsVisitGen > 0,
+    staleTime: 0,
+    gcTime: 0,
   })
+
+  const adInsightsPending =
+    shouldLoadAdInsights &&
+    !!selectedId &&
+    (!messagesReady ||
+      isLoadingAdInsights ||
+      isFetchingAdInsights ||
+      isAdInsightsPlaceholder)
 
   const [isRefreshingAdInsights, setIsRefreshingAdInsights] = useState(false)
   const handleRefreshAdInsights = useCallback(async () => {
@@ -334,25 +415,23 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
     setIsRefreshingAdInsights(true)
     try {
       const freshData = await fetchConversationAdInsights(selectedId, undefined, true)
-      qc.setQueryData(['cskh', 'inbox', 'ad-insights', selectedId], freshData)
+      qc.setQueryData(
+        ['cskh', 'inbox', 'ad-insights', selectedId, adInsightsVisitGen],
+        freshData,
+      )
       toast.success('Đã làm mới dữ liệu quảng cáo từ Meta')
     } catch (e) {
       toast.error(`Lỗi: ${getApiErrorMessage(e)}`)
     } finally {
       setIsRefreshingAdInsights(false)
     }
-  }, [selectedId, isRefreshingAdInsights, qc])
+  }, [selectedId, isRefreshingAdInsights, qc, adInsightsVisitGen])
+
+  const adInsightsVisitCountsRef = useRef(new Map<string, number>())
 
   const handlePrefetchConversation = useCallback(
     (conv: CskhInboxConversation) => {
       prefetchInboxMessages(qc, conv)
-      if (conv.fromAd || conv.referralSource === 'HEURISTIC') {
-        void qc.prefetchQuery({
-          queryKey: ['cskh', 'inbox', 'ad-insights', conv.id],
-          queryFn: ({ signal }) => fetchConversationAdInsights(conv.id, signal),
-          staleTime: 300_000,
-        })
-      }
     },
     [qc],
   )
@@ -364,8 +443,12 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
       unreadCount: 0,
     }
 
+    const visitGen = (adInsightsVisitCountsRef.current.get(conv.id) ?? 0) + 1
+    adInsightsVisitCountsRef.current.set(conv.id, visitGen)
+
     setSelectedConversation(opened)
     setInputDraft('')
+    setAdInsightsSelectGen({ id: conv.id, gen: visitGen })
 
     patchInboxConversationInCache(qc, {
       id: conv.id,
@@ -648,13 +731,13 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
             </div>
 
             {/* Right Sidebar */}
-            <div className="hidden lg:block shrink-0">
+            <div className="hidden lg:flex shrink-0 h-full min-h-0">
               <ChatRightSidebar
                 conversation={sidebarConversation ?? selectedConversation}
                 intent={intent}
                 isLoadingIntent={isLoadingIntent}
-                adInsights={adInsights}
-                isLoadingAdInsights={isLoadingAdInsights}
+                adInsights={adInsightsPending ? undefined : adInsights}
+                isLoadingAdInsights={adInsightsPending}
                 onApplySuggestedReply={(text) => setInputDraft(text)}
                 onRefreshAdInsights={handleRefreshAdInsights}
                 isRefreshingAdInsights={isRefreshingAdInsights}

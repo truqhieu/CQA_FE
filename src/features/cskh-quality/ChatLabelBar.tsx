@@ -12,6 +12,7 @@ import {
   type CskhInboxMessage,
 } from './api'
 import { patchInboxConversationInCache } from './inboxRealtimeCache'
+import { invalidateInboxViewHistory } from './ConversationViewHistory'
 
 type ChatLabelBarProps = {
   conversation: CskhInboxConversation
@@ -81,6 +82,10 @@ export function ChatLabelBar({ conversation }: ChatLabelBarProps) {
     [allLabels],
   )
   const labelsLocked = conversation.labelsLocked ?? (conversation.labels?.length ?? 0) > 0
+  const hasDaChot = useMemo(
+    () => (conversation.labels ?? []).some((l) => l.type === 'status' && l.name === 'Đã chốt'),
+    [conversation.labels],
+  )
   const assignedStaffId = useMemo(
     () => conversation.labels?.find((l) => l.type === 'staff')?.id,
     [conversation.labels],
@@ -88,6 +93,25 @@ export function ChatLabelBar({ conversation }: ChatLabelBarProps) {
 
   const toggleMut = useMutation({
     mutationFn: (labelId: string) => toggleInboxConversationLabel(conversation.id, labelId),
+    onMutate: (labelId) => {
+      const picked = (allLabels ?? []).find((l) => l.id === labelId)
+      if (!picked) return
+      const prevLabels = conversation.labels ?? []
+      let nextLabels = [...prevLabels]
+      if (picked.type === 'staff') {
+        nextLabels = nextLabels.filter((l) => l.type !== 'staff')
+      }
+      if (!nextLabels.some((l) => l.id === labelId)) {
+        nextLabels.push(picked)
+      }
+      patchInboxConversationInCache(qc, {
+        id: conversation.id,
+        labels: nextLabels,
+        labelsLocked: true,
+        awaitingLabel: false,
+        unreadCount: 0,
+      })
+    },
     onSuccess: (labels) => {
       patchInboxConversationInCache(qc, {
         id: conversation.id,
@@ -96,6 +120,7 @@ export function ChatLabelBar({ conversation }: ChatLabelBarProps) {
         awaitingLabel: false,
         unreadCount: 0,
       })
+      invalidateInboxViewHistory(qc, conversation.id)
       qc.setQueryData<{ conversation: CskhInboxConversation; messages: CskhInboxMessage[] }>(
         ['cskh', 'inbox', 'messages', conversation.id],
         (prev) =>
@@ -155,28 +180,40 @@ export function ChatLabelBar({ conversation }: ChatLabelBarProps) {
         ))}
       </div>
 
-      <div className="px-3 pt-1 pb-2 flex items-center gap-1.5">
-        <span className="text-[9.5px] font-bold text-slate-500 uppercase tracking-wide pl-4">
-          Nhân viên chốt
-        </span>
-      </div>
-      <div className="px-3 pb-2.5 flex gap-1 overflow-x-auto scrollbar-thin max-h-[52px] flex-wrap content-start">
-        {staffLabels.map((label) => (
-          <LabelChip
-            key={label.id}
-            label={label}
-            active={activeIds.has(label.id)}
-            locked={labelsLocked}
-            disabled={
-              toggleMut.isPending ||
-              (!!assignedStaffId && assignedStaffId !== label.id)
-            }
-            onClick={() => toggleMut.mutate(label.id)}
-          />
-        ))}
-      </div>
+      {!hasDaChot && (
+        <>
+          <div className="px-3 pt-1 pb-2 flex items-center gap-1.5">
+            <span className="text-[9.5px] font-bold text-slate-500 uppercase tracking-wide pl-4">
+              Nhân viên chốt
+            </span>
+          </div>
+          <div className="px-3 pb-2.5 flex gap-1 overflow-x-auto scrollbar-thin max-h-[52px] flex-wrap content-start">
+            {staffLabels.map((label) => (
+              <LabelChip
+                key={label.id}
+                label={label}
+                active={activeIds.has(label.id)}
+                locked={labelsLocked}
+                disabled={
+                  toggleMut.isPending ||
+                  (!!assignedStaffId && assignedStaffId !== label.id)
+                }
+                onClick={() => toggleMut.mutate(label.id)}
+              />
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
+}
+
+/** Ẩn nhãn NV chốt trên list/header khi hội thoại đã gán "Đã chốt". */
+export function labelsForConversationDisplay(labels?: CskhInboxLabel[]): CskhInboxLabel[] {
+  if (!labels?.length) return []
+  const daChot = labels.some((l) => l.type === 'status' && l.name === 'Đã chốt')
+  if (!daChot) return labels
+  return labels.filter((l) => l.type !== 'staff')
 }
 
 export function ConversationLabelBadges({
@@ -188,9 +225,10 @@ export function ConversationLabelBadges({
   max?: number
   className?: string
 }) {
-  if (!labels?.length) return null
-  const shown = labels.slice(0, max)
-  const rest = labels.length - shown.length
+  const display = labelsForConversationDisplay(labels)
+  if (!display.length) return null
+  const shown = display.slice(0, max)
+  const rest = display.length - shown.length
 
   return (
     <div className={cn('flex items-center gap-0.5 flex-wrap', className)}>

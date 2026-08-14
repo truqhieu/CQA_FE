@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
-import { Copy, Check, Sparkles, User, Megaphone, MessageSquare, Zap, Loader2, RefreshCw } from 'lucide-react'
+import { Copy, Check, Sparkles, User, Megaphone, MessageSquare, Zap, Loader2, RefreshCw, ShoppingCart } from 'lucide-react'
 import { toast } from 'sonner'
 import type { CskhInboxConversation, CskhCustomerIntent, CskhAdInsights } from './api'
 import { cskhMediaProxySrc } from './messageMedia'
+import { SapoCreateOrderDialog } from './SapoCreateOrderDialog'
 import { cn } from '@/lib/utils'
 
 type ChatRightSidebarProps = {
@@ -76,6 +77,7 @@ export function ChatRightSidebar({
   isRefreshingAdInsights,
 }: ChatRightSidebarProps) {
   const [copied, setCopied] = useState(false)
+  const [sapoOrderOpen, setSapoOrderOpen] = useState(false)
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text)
@@ -103,7 +105,8 @@ export function ChatRightSidebar({
   const hasSpecificAd =
     adInsights?.insightsScope === 'ad' || Boolean(conversation.adId || adInsights?.adId)
 
-  const isCampaignEstimate = adInsights?.insightsScope === 'campaign'
+  const isCampaignEstimate =
+    adInsights?.insightsScope === 'campaign' || adInsights?.insightsScope === 'adset'
 
   const isPageEstimate =
     adInsights?.insightsScope === 'page' || adInsights?.isPageLevelEstimate === true
@@ -129,7 +132,8 @@ export function ChatRightSidebar({
   const adPeriod = formatAdPeriod(adInsights?.dateStart, adInsights?.dateStop)
 
   return (
-    <div className="w-[300px] border-l border-slate-200/60 bg-gradient-to-b from-slate-50/80 to-white flex flex-col h-full overflow-y-auto font-sans">
+    <div className="w-[300px] border-l border-slate-200/60 bg-gradient-to-b from-slate-50/80 to-white flex flex-col h-full font-sans">
+      <div className="flex-1 overflow-y-auto min-h-0">
       {/* Customer Profile */}
       <div className="px-5 pt-5 pb-4 flex flex-col items-center text-center">
         {conversation.customerPictureUrl ? (
@@ -216,7 +220,15 @@ export function ChatRightSidebar({
               )}
             </div>
 
-            {showCampaignBlock ? (
+            {isLoadingAdInsights ? (
+              <div className="flex flex-col items-center justify-center gap-2 rounded-lg bg-white/70 border border-amber-100/80 px-3 py-6 text-center">
+                <Loader2 className="w-5 h-5 animate-spin text-amber-500" />
+                <p className="text-[11px] font-medium text-slate-600">Đang tải quảng cáo Facebook...</p>
+                <p className="text-[9px] text-slate-400 leading-relaxed max-w-[220px]">
+                  Lấy chiến dịch và chi phí từ Meta cho hội thoại này
+                </p>
+              </div>
+            ) : showCampaignBlock ? (
               <div className="space-y-2 rounded-lg bg-white/70 border border-amber-100/80 px-2.5 py-2.5">
                 {campaignName && (
                   <div className="flex flex-col gap-0.5">
@@ -252,11 +264,6 @@ export function ChatRightSidebar({
                   </p>
                 )}
               </div>
-            ) : isLoadingAdInsights ? (
-              <div className="flex items-center gap-1.5 text-[10px] text-slate-500 rounded-lg bg-white/60 px-2.5 py-2">
-                <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
-                Đang lấy thông tin quảng cáo...
-              </div>
             ) : (
               <div className="rounded-lg bg-white/60 border border-amber-100/60 px-2.5 py-2 text-[10px] text-slate-500 leading-relaxed">
                 Khách vào từ quảng cáo Click-to-Messenger. Chi tiết camp sẽ hiện khi Meta trả dữ liệu.
@@ -264,13 +271,9 @@ export function ChatRightSidebar({
             )}
 
             {/* Chi phí */}
+            {!isLoadingAdInsights && (
             <div className="pt-0.5 space-y-2">
-              {isLoadingAdInsights && !hasCostData ? (
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
-                  <Loader2 className="w-3 h-3 animate-spin text-emerald-500" />
-                  Đang tính chi phí...
-                </div>
-              ) : adInsights?.unavailableReason ? (
+              {adInsights?.unavailableReason ? (
                 <div className="rounded-lg bg-white/60 border border-slate-200/60 px-2.5 py-2 space-y-1">
                   <p className="text-[10px] text-slate-600 leading-relaxed">
                     {adInsightsHint(adInsights.unavailableReason)}
@@ -319,7 +322,9 @@ export function ChatRightSidebar({
                           {hasSpecificAd
                             ? ' hội thoại từ QC này'
                             : isCampaignEstimate
-                              ? ' hội thoại từ chiến dịch'
+                              ? adInsights?.insightsScope === 'adset'
+                                ? ' hội thoại từ nhóm QC'
+                                : ' hội thoại từ chiến dịch'
                               : ' hội thoại QC trên Page'}
                         </>
                       )}
@@ -331,6 +336,23 @@ export function ChatRightSidebar({
                       )}
                     </p>
                   )}
+                  {isRefreshingAdInsights || isLoadingAdInsights ? (
+                    <p className="text-[9px] text-amber-600 font-medium">
+                      Đang quét lại từ Meta...
+                    </p>
+                  ) : adInsights?.metaFetchedAt ? (
+                    <p className="text-[9px] text-slate-400">
+                      {adInsights.refreshedFromMeta
+                        ? 'Vừa lấy từ Meta'
+                        : 'Từ cache'}
+                      {' · '}
+                      {new Date(adInsights.metaFetchedAt).toLocaleTimeString('vi-VN', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                      })}
+                    </p>
+                  ) : null}
                   {adInsights?.connectedAdAccountName && (
                     <p className="text-[9px] text-slate-400">
                       Tài khoản QC: {adInsights.connectedAdAccountName}
@@ -339,6 +361,7 @@ export function ChatRightSidebar({
                 </>
               ) : null}
             </div>
+            )}
           </div>
         )}
       </div>
@@ -438,7 +461,40 @@ export function ChatRightSidebar({
                         </div>
                       )}
                       <div className="min-w-0 flex-1 text-[11px]">
-                        <p className="font-semibold text-slate-700 truncate">{p.name}</p>
+                        <p className="font-semibold text-slate-700 leading-snug break-words whitespace-normal">{p.name}</p>
+                        <p className="text-[9px] text-emerald-700/90 font-medium mt-0.5 break-words">
+                          {[
+                            (() => {
+                              const missingSize = 'chưa có size'
+                              const missingColor = 'chưa có màu'
+                              const vt = (p.variantTitle || '').trim()
+                              if (!vt || /^default/i.test(vt)) {
+                                return `${missingSize} · ${missingColor}`
+                              }
+                              if (vt.includes('/')) {
+                                let size: string | null = null
+                                let color: string | null = null
+                                for (const part of vt.split('/').map((x) => x.trim()).filter(Boolean)) {
+                                  if (/size|kích\s*thước|^\d+(\.\d+)?$/i.test(part)) {
+                                    size = /^\d+(\.\d+)?$/.test(part) ? `Size ${part}` : part
+                                  } else {
+                                    color = /^màu\b/i.test(part) ? part : `Màu ${part}`
+                                  }
+                                }
+                                return `${size ?? missingSize} · ${color ?? missingColor}`
+                              }
+                              if (/^\d+(\.\d+)?$/.test(vt) || /^(size|kích\s*thước)\b/i.test(vt)) {
+                                const size = /^\d+(\.\d+)?$/.test(vt) ? `Size ${vt}` : vt
+                                return `${size} · ${missingColor}`
+                              }
+                              const color = /^màu\b/i.test(vt) ? vt : `Màu ${vt}`
+                              return `${missingSize} · ${color}`
+                            })(),
+                            p.sku ? `SKU ${p.sku}` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </p>
                         <p className="text-violet-600 font-bold mt-0.5">{p.priceLabel}</p>
                       </div>
                     </div>
@@ -517,6 +573,27 @@ export function ChatRightSidebar({
           </div>
         )}
       </div>
+
+      <div className="h-px mx-4 bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
+
+      <div className="px-5 py-4 pb-6">
+        <button
+          type="button"
+          onClick={() => setSapoOrderOpen(true)}
+          className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 px-4 py-3 text-[12px] font-bold text-white shadow-md hover:from-emerald-600 hover:to-teal-700 transition-all active:scale-[0.99] cursor-pointer"
+        >
+          <ShoppingCart className="w-4 h-4" />
+          Tạo đơn hàng
+        </button>
+      </div>
+      </div>
+
+      <SapoCreateOrderDialog
+        open={sapoOrderOpen}
+        onClose={() => setSapoOrderOpen(false)}
+        conversation={conversation}
+        intent={intent}
+      />
     </div>
   )
 }
