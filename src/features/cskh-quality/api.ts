@@ -774,11 +774,12 @@ export async function backfillInboxAdReferrals(): Promise<{ updated: number }> {
 
 export async function fetchInboxMessages(
   conversationId: string,
-  opts?: { since?: string; refresh?: boolean; limit?: number },
+  opts?: { since?: string; before?: string; refresh?: boolean; limit?: number },
   signal?: AbortSignal
 ): Promise<{ conversation: CskhInboxConversation; messages: CskhInboxMessage[] }> {
   const params: Record<string, string> = {}
   if (opts?.since) params.since = opts.since
+  if (opts?.before) params.before = opts.before
   if (opts?.refresh) params.refresh = '1'
   if (opts?.limit != null && opts.limit > 0) params.limit = String(opts.limit)
   const { data } = await apiClient.get<{
@@ -794,8 +795,8 @@ export async function fetchInboxMessages(
   }
 }
 
-const INBOX_MESSAGES_OPEN_LIMIT = 50
-const INBOX_BACKGROUND_REFRESH_MS = 5 * 60_000
+const INBOX_MESSAGES_OPEN_LIMIT = 400
+const INBOX_BACKGROUND_REFRESH_MS = 45_000
 const lastInboxBackgroundRefresh = new Map<string, number>()
 
 function shouldBackgroundRefreshMessages(
@@ -877,7 +878,7 @@ export async function fetchInboxMessagesOlder(
 ): Promise<CskhInboxMessage[]> {
   const { messages } = await fetchInboxMessages(
     conversationId,
-    { since: beforeSentAt, limit: INBOX_MESSAGES_OPEN_LIMIT },
+    { before: beforeSentAt, limit: INBOX_MESSAGES_OPEN_LIMIT },
     signal,
   )
   return messages

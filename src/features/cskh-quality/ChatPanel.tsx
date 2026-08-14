@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from 'react'
+import { useEffect, useRef, useMemo, useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { getApiErrorMessage } from '@/lib/axios'
@@ -18,7 +18,7 @@ import { ChatLabelBar, ConversationLabelBadges } from './ChatLabelBar'
 import { ConversationViewHistory } from './ConversationViewHistory'
 import { TypingIndicator } from './TypingIndicator'
 import { cskhMediaProxySrc } from './messageMedia'
-import { appendInboxMessagesToCache, patchInboxConversationInCache, isInboxMessagePreview } from './inboxRealtimeCache'
+import { appendInboxMessagesToCache, patchInboxConversationInCache, isInboxMessagePreview, collapseInboxMessageList } from './inboxRealtimeCache'
 
 type ChatPanelProps = {
   conversation: CskhInboxConversation
@@ -42,11 +42,19 @@ export function ChatPanel({
   const typingTimeoutRef = useRef<any>(null)
   const lastConversationIdRef = useRef<string>('')
   const hasScrolledForConvRef = useRef<boolean>(false)
+  const loadingOlderRef = useRef(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const [hasMoreOlder, setHasMoreOlder] = useState(true)
 
   if (lastConversationIdRef.current !== conversation.id) {
     lastConversationIdRef.current = conversation.id
     hasScrolledForConvRef.current = false
+    loadingOlderRef.current = false
   }
+
+  useEffect(() => {
+    setHasMoreOlder(true)
+  }, [conversation.id])
   const qc = useQueryClient()
 
   const markUnreadMutation = useMutation({
@@ -76,7 +84,7 @@ export function ChatPanel({
         qc.setQueryData(['cskh', 'inbox', 'messages', conversation.id], partial)
       }),
     staleTime: 120_000,
-    refetchInterval: connected ? false : 30_000,
+    refetchInterval: connected ? 20_000 : 8_000,
   })
 
   const rawMessages = messagesData?.messages ?? []
@@ -134,21 +142,21 @@ export function ChatPanel({
 
       return { tempId, previousMessages }
     },
-    onSuccess: (newMessage, text, context) => {
-      if (newMessage && context?.tempId) {
-        // Replace temp message with actual message from server
+    onSuccess: (newMessage, _text, context) => {
+      if (context?.tempId) {
         qc.setQueryData<{ conversation: CskhInboxConversation; messages: CskhInboxMessage[] }>(
           ['cskh', 'inbox', 'messages', conversation.id],
           (prev) => {
             if (!prev) return prev
-            return {
-              ...prev,
-              messages: (prev.messages ?? []).map((m) =>
-                m.id === context.tempId ? { ...newMessage, status: 'sent' } : m
-              ),
-            }
+            const withoutTemp = (prev.messages ?? []).filter((m) => m.id !== context.tempId)
+            const next = newMessage ? [...withoutTemp, newMessage] : withoutTemp
+            return { ...prev, messages: collapseInboxMessageList(next) }
           }
         )
+      } else if (newMessage) {
+        appendInboxMessagesToCache(qc, conversation.id, undefined, [newMessage])
+      }
+      if (newMessage) {
         patchInboxConversationInCache(qc, {
           id: conversation.id,
           lastMessage: newMessage.text,
@@ -206,7 +214,11 @@ export function ChatPanel({
     // 1. It is the first scroll for this conversation (instant scroll)
     // 2. A new message arrived (smooth scroll)
     // 3. Customer started typing (smooth scroll)
-    const shouldScroll = isInitialLoad || isNewMessage || isCustomerTyping
+    const nearBottom =
+      !scrollRef.current ||
+      scrollRef.current.scrollHeight - scrollRef.current.scrollTop - scrollRef.current.clientHeight < 140
+    const shouldScroll =
+      !loadingOlder && (isInitialLoad || ((isNewMessage || isCustomerTyping) && nearBottom))
 
     if (shouldScroll && scrollRef.current) {
       const behavior = isInitialLoad ? 'auto' : 'smooth'
@@ -221,16 +233,49 @@ export function ChatPanel({
     }
 
     lastMessageIdRef.current = lastMsgId
-  }, [messages, isCustomerTyping, conversation.id])
+  }, [messages, isCustomerTyping, conversation.id, loadingOlder])
 
   const displayMessages = useMemo(() => {
-    return messages
+    return collapseInboxMessageList(messages)
       .filter((m) => m.text || m.attachmentUrl || m.messageType)
       .map((m) => ({
         ...m,
         isOwn: m.senderType === 'staff',
       }))
   }, [messages])
+
+  const loadOlder = useCallback(async () => {
+    const el = scrollRef.current
+    const oldest = messages[0]
+    if (!el || !oldest?.sentAt || loadingOlderRef.current || !hasMoreOlder) return
+    loadingOlderRef.current = true
+    setLoadingOlder(true)
+    const prevHeight = el.scrollHeight
+    try {
+      const older = await fetchInboxMessages(conversation.id, {
+        before: oldest.sentAt,
+        limit: 80,
+      })
+      if (older.messages.length < 80) setHasMoreOlder(false)
+      qc.setQueryData<{ conversation: CskhInboxConversation; messages: CskhInboxMessage[] }>(
+        ['cskh', 'inbox', 'messages', conversation.id],
+        (prev) => {
+          if (!prev) return older
+          return {
+            ...prev,
+            messages: collapseInboxMessageList([...(older.messages ?? []), ...(prev.messages ?? [])]),
+          }
+        },
+      )
+      requestAnimationFrame(() => {
+        if (!scrollRef.current) return
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight - prevHeight
+      })
+    } finally {
+      loadingOlderRef.current = false
+      setLoadingOlder(false)
+    }
+  }, [conversation.id, hasMoreOlder, messages, qc])
 
   return (
     <div className="flex flex-col h-full bg-white overflow-hidden">
@@ -250,8 +295,8 @@ export function ChatPanel({
           )}
           <div>
             <h3 className="text-[13px] font-bold text-slate-800 leading-tight">
-              {conversation.customerName ||
-                `Khách hàng ${(conversation.participantPsid ?? '').slice(0, 8) || '?'}`}
+              {conversationWithLabels.customerName ||
+                `Khách hàng ${(conversationWithLabels.participantPsid ?? conversation.participantPsid ?? '').slice(0, 8) || '?'}`}
             </h3>
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               <span className="text-[10px] text-slate-400 font-medium">Cuộc trò chuyện Facebook</span>
@@ -294,6 +339,9 @@ export function ChatPanel({
       {/* Messages Area */}
       <div
         ref={scrollRef}
+        onScroll={() => {
+          if (scrollRef.current && scrollRef.current.scrollTop < 56) void loadOlder()
+        }}
         className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-gradient-to-b from-slate-50/50 to-white"
       >
         {showInitialLoader ? (
@@ -307,6 +355,11 @@ export function ChatPanel({
           </div>
         ) : (
           <>
+            {loadingOlder && (
+              <div className="flex justify-center py-1">
+                <Loader2 className="w-4 h-4 animate-spin text-indigo-300" />
+              </div>
+            )}
             {showHydratingHint && (
               <div className="flex justify-center py-1">
                 <Loader2 className="w-4 h-4 animate-spin text-indigo-300" />
@@ -325,7 +378,9 @@ export function ChatPanel({
         <>
           <ChatLabelBar conversation={conversationWithLabels} />
           <ChatMessageInput
-            onSend={(text) => { sendMut.mutate(text) }}
+            onSend={async (text) => {
+              await sendMut.mutateAsync(text)
+            }}
             onTyping={handleTyping}
             disabled={sendMut.isPending}
             draftText={draftText}

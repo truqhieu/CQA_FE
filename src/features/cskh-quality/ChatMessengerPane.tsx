@@ -188,8 +188,8 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     staleTime: 60_000,
-    refetchOnWindowFocus: false,
-    refetchInterval: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: connected ? false : 8_000,
   })
 
   const isRefreshingList = isFetching && !isFetchingNextPage && !isLoadingConversations
@@ -245,12 +245,6 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
     }
   }, [selectedPageId, qc])
 
-  const sidebarConversation = selectedConversation
-
-  const shouldLoadAdInsights =
-    !!sidebarConversation &&
-    (sidebarConversation.fromAd || sidebarConversation.referralSource === 'HEURISTIC')
-
   const applyActiveFilter = useCallback((tab: FilterTab) => {
     startFilterTransition(() => {
       setActiveFilter(tab)
@@ -304,7 +298,16 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
       }),
     enabled: !!selectedId,
     staleTime: 120_000,
+    refetchInterval: connected ? 20_000 : 8_000,
   })
+
+  const sidebarConversation: CskhInboxConversation | null = selectedConversation
+    ? { ...selectedConversation, ...(messagesCache?.conversation ?? {}) }
+    : null
+
+  const shouldLoadAdInsights =
+    !!sidebarConversation &&
+    (sidebarConversation.fromAd || sidebarConversation.referralSource === 'HEURISTIC')
 
   const messagesReady =
     messagesFetched ||
@@ -634,7 +637,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
               </div>
               <div className="flex-1 overflow-hidden">
                 <ChatPanel
-                  conversation={selectedConversation}
+                  conversation={sidebarConversation ?? selectedConversation}
                   isCustomerTyping={typingConversationIds.has(selectedConversation.id)}
                   onClose={() => setSelectedConversation(null)}
                   connected={connected}

@@ -101,7 +101,6 @@ export function useCskhInboxStream({
           patchInboxConversationInCache(qc, data.conversation)
         }
 
-        // 4. Handle incoming/outgoing message payload
         if (data.type === 'message' && data.messages?.length && data.conversationId) {
           appendInboxMessagesToCache(
             qc,

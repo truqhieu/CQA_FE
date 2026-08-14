@@ -39,10 +39,13 @@ export function ChatMessageInput({
     }
   }, [draftText, onDraftApplied])
 
+  const sendingRef = useRef(false)
+
   const handleSend = async () => {
     const trimmed = text.trim()
-    if (!trimmed || sending) return
+    if (!trimmed || sending || sendingRef.current) return
 
+    sendingRef.current = true
     setSending(true)
     try {
       await onSend(trimmed)
@@ -50,6 +53,7 @@ export function ChatMessageInput({
       // Auto-focus after sending
       textareaRef.current?.focus()
     } finally {
+      sendingRef.current = false
       setSending(false)
     }
   }

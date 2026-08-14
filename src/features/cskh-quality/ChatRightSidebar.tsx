@@ -166,7 +166,8 @@ export function ChatRightSidebar({
           <div className="flex items-start gap-2">
             <span className="text-slate-400 font-medium min-w-[60px] pt-0.5">Kênh nhận:</span>
             <span className="text-slate-700 font-semibold truncate">
-              {conversation.pageName || `ID: ${conversation.pageId}`}
+              {conversation.pageName?.trim() ||
+                (conversation.pageId ? `ID: ${conversation.pageId}` : '—')}
             </span>
           </div>
 
@@ -189,7 +190,7 @@ export function ChatRightSidebar({
           <div className="flex items-start gap-2">
             <span className="text-slate-400 font-medium min-w-[60px] pt-0.5">PSID:</span>
             <span className="text-slate-600 font-mono text-[10px] select-all bg-slate-50 px-1.5 py-0.5 rounded">
-              {conversation.participantPsid}
+              {conversation.participantPsid?.trim() || '—'}
             </span>
           </div>
         </div>
