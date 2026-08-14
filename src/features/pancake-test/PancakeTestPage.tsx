@@ -226,7 +226,16 @@ function tidyChatMessages(messages: PancakeMessage[]): PancakeMessage[] {
   return out
 }
 
-function displayLeadLabels(lead: { stage?: string | null; labels?: string[] | null }) {
+function hasPancakeChat(lead: { conversationId?: string | null }) {
+  return Boolean(lead.conversationId?.trim())
+}
+
+function displayLeadLabels(lead: {
+  stage?: string | null
+  labels?: string[] | null
+  conversationId?: string | null
+}) {
+  if (!hasPancakeChat(lead)) return []
   const raw = lead.labels ?? []
   const closed = lead.stage === 'customer' || raw.includes('Đã chốt')
   const labels = closed
@@ -241,8 +250,9 @@ function pageWithMarket(p: PancakePage) {
 }
 
 function conversationKindLabel(type?: string | null, conversationId?: string | null) {
+  if (!conversationId?.trim()) return null
   const t = (type || '').trim().toLowerCase()
-  const id = (conversationId || '').toLowerCase()
+  const id = conversationId.toLowerCase()
   if (
     t.includes('comment') ||
     t === 'feed' ||
@@ -262,11 +272,16 @@ function conversationKindLabel(type?: string | null, conversationId?: string | n
 
 function StageBadge({
   stage,
+  hasConversation,
   onOpenChat,
 }: {
   stage?: string | null
+  hasConversation?: boolean
   onOpenChat?: () => void
 }) {
+  if (!hasConversation) {
+    return <span className="text-[11px] text-slate-400">Không có hội thoại</span>
+  }
   const isCustomer = stage === 'customer'
   const label = isCustomer ? 'Đã khách' : 'Hội thoại'
   const baseClass = isCustomer
@@ -314,6 +329,7 @@ export default function PancakeTestPage() {
   const [channelQuery, setChannelQuery] = useState('')
   const [channelOpen, setChannelOpen] = useState(false)
   const channelBoxRef = useRef<HTMLDivElement>(null)
+  const contactScanAtRef = useRef<Record<string, number>>({})
   const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null)
   const [chatLead, setChatLead] = useState<PancakeLead | null>(null)
   const [warning, setWarning] = useState<string | null>(null)
@@ -417,11 +433,21 @@ export default function PancakeTestPage() {
   })
 
   const autoLabelM = useMutation({
-    mutationFn: (pageId: string) => autoLabelPancakePage(pageId, 50),
-    onSuccess: async (data, pageId) => {
-      toast.success(
-        `Quét ${data.scanned} hội thoại → ${data.closed} Đã chốt · ${data.follow} follow`,
-      )
+    mutationFn: (args: string | { pageId: string; silent?: boolean; onlyWithContact?: boolean }) => {
+      const pageId = typeof args === 'string' ? args : args.pageId
+      const onlyWithContact = typeof args === 'object' ? Boolean(args.onlyWithContact) : false
+      return autoLabelPancakePage(pageId, onlyWithContact ? 40 : 50, { onlyWithContact })
+    },
+    onSuccess: async (data, args) => {
+      const pageId = typeof args === 'string' ? args : args.pageId
+      const silent = typeof args === 'object' && args.silent
+      if (!silent) {
+        toast.success(
+          `Quét ${data.scanned} hội thoại → ${data.closed} Đã chốt · ${data.follow} follow`,
+        )
+      } else if (data.closed > 0) {
+        toast.success(`Đã gắn ${data.closed} nhãn Đã chốt từ hội thoại có SĐT + địa chỉ`)
+      }
       await qc.invalidateQueries({ queryKey: ['pancake', 'leads', pageId] })
     },
     onError: (e) => toast.error(errMsg(e, 'Quét nhãn thất bại')),
@@ -456,6 +482,23 @@ export default function PancakeTestPage() {
 
   const leads = leadsQ.data?.leads ?? []
   const stageCounts = leadsQ.data?.stageCounts
+
+  useEffect(() => {
+    if (!selectedPageId || leadsQ.isLoading || autoLabelM.isPending) return
+    const last = contactScanAtRef.current[selectedPageId] ?? 0
+    if (Date.now() - last < 60_000) return
+    const needScan = leads.some(
+      (l) =>
+        hasPancakeChat(l) &&
+        l.phones.length > 0 &&
+        Boolean(l.address?.trim()) &&
+        l.stage !== 'customer' &&
+        !displayLeadLabels(l).includes('Đã chốt'),
+    )
+    if (!needScan) return
+    contactScanAtRef.current[selectedPageId] = Date.now()
+    autoLabelM.mutate({ pageId: selectedPageId, silent: true, onlyWithContact: true })
+  }, [selectedPageId, leads, leadsQ.isLoading, autoLabelM])
 
   const filteredLeads = useMemo(() => {
     let list = leads
@@ -994,10 +1037,9 @@ export default function PancakeTestPage() {
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <StageBadge
                             stage={lead.stage}
+                            hasConversation={hasPancakeChat(lead)}
                             onOpenChat={
-                              lead.conversationId
-                                ? () => setChatLead(lead)
-                                : undefined
+                              hasPancakeChat(lead) ? () => setChatLead(lead) : undefined
                             }
                           />
                         </TableCell>
