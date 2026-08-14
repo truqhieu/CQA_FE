@@ -441,13 +441,6 @@ export default function PancakeTestPage() {
     onSuccess: async (data, args) => {
       const pageId = typeof args === 'string' ? args : args.pageId
       const silent = typeof args === 'object' && args.silent
-      if (data.queued) {
-        if (!silent) toast.success('Đã gửi worker quét nhãn hội thoại')
-        window.setTimeout(() => {
-          void qc.invalidateQueries({ queryKey: ['pancake', 'leads', pageId] })
-        }, 8_000)
-        return
-      }
       if (!silent) {
         toast.success(
           `Quét ${data.scanned} hội thoại → ${data.closed} Đã chốt · ${data.follow} follow`,
