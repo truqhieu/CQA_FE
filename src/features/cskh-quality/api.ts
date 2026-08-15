@@ -5,6 +5,7 @@ export interface CskhPage {
   pageId: string
   pageName: string | null
   pagePictureUrl?: string | null
+  platform?: 'messenger' | 'instagram' | string
   enabled: boolean
   updatedAt: string
   conversationCount?: number
@@ -932,6 +933,7 @@ export interface CskhInboxConversation {
   id: string
   pageId: string
   pageName: string | null
+  platform?: 'messenger' | 'instagram' | string
   fbConversationId: string | null
   participantPsid: string
   customerName: string | null
@@ -985,9 +987,11 @@ export interface CskhInboxConversationPage {
 
 export async function fetchInboxConversationStats(options?: {
   pageId?: string
+  platform?: 'messenger' | 'instagram'
 }): Promise<CskhInboxConversationStats> {
   const params: Record<string, string> = {}
   if (options?.pageId) params.pageId = options.pageId
+  if (options?.platform) params.platform = options.platform
   const { data } = await apiClient.get<CskhInboxConversationStats>(
     '/cskh/inbox/conversation-stats',
     { params: Object.keys(params).length ? params : undefined },
@@ -1007,6 +1011,7 @@ export async function fetchInboxConversationsPage(options?: {
   labelId?: string
   unlabeledOnly?: boolean
   includeLabels?: boolean
+  platform?: 'messenger' | 'instagram'
 }): Promise<CskhInboxConversationPage> {
   const params: Record<string, string> = {}
   if (options?.pageId) params.pageId = options.pageId
@@ -1022,6 +1027,7 @@ export async function fetchInboxConversationsPage(options?: {
   if (options?.labelId) params.labelId = options.labelId
   if (options?.unlabeledOnly) params.unlabeledOnly = '1'
   if (options?.includeLabels) params.includeLabels = '1'
+  if (options?.platform) params.platform = options.platform
   const { data } = await apiClient.get<CskhInboxConversationPage>('/cskh/inbox/conversations', {
     params: Object.keys(params).length ? params : undefined,
   })

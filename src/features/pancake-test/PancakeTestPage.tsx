@@ -405,13 +405,24 @@ export default function PancakeTestPage() {
         const msg = (l.lastMessage || '').trim()
         return !msg || /^ảnh đính kèm$/i.test(msg)
       })
-      return incomplete ? 3000 : false
+      return incomplete ? 15_000 : false
     },
   })
 
   const syncM = useMutation({
     mutationFn: (pageId: string) => syncPancakePageCustomers(pageId),
     onSuccess: async (data, pageId) => {
+      if (data.queued) {
+        toast.success(data.note || 'Đã gửi worker đồng bộ Pancake')
+        const started = Date.now()
+        const tick = () => {
+          void qc.invalidateQueries({ queryKey: ['pancake', 'leads', pageId] })
+          void qc.invalidateQueries({ queryKey: ['pancake', 'pages'] })
+          if (Date.now() - started < 50_000) window.setTimeout(tick, 4_000)
+        }
+        window.setTimeout(tick, 3_000)
+        return
+      }
       toast.success(data.note)
       if (data.warning) setWarning(data.warning)
       await qc.invalidateQueries({ queryKey: ['pancake', 'leads', pageId] })
@@ -422,6 +433,17 @@ export default function PancakeTestPage() {
   const syncAllM = useMutation({
     mutationFn: () => syncAllPancakePages(),
     onSuccess: async (data) => {
+      if (data.queued) {
+        toast.success('Đã gửi worker đồng bộ mọi kênh Pancake')
+        const started = Date.now()
+        const tick = () => {
+          void qc.invalidateQueries({ queryKey: ['pancake', 'leads'] })
+          void qc.invalidateQueries({ queryKey: ['pancake', 'pages'] })
+          if (Date.now() - started < 90_000) window.setTimeout(tick, 5_000)
+        }
+        window.setTimeout(tick, 4_000)
+        return
+      }
       toast.success(
         `Đã đồng bộ ${data.ok}/${data.totalPages} kênh` +
           (data.failed ? ` · lỗi ${data.failed}` : ''),
@@ -443,9 +465,12 @@ export default function PancakeTestPage() {
       const silent = typeof args === 'object' && args.silent
       if (data.queued) {
         if (!silent) toast.success('Đã gửi worker quét nhãn hội thoại')
-        window.setTimeout(() => {
+        const started = Date.now()
+        const tick = () => {
           void qc.invalidateQueries({ queryKey: ['pancake', 'leads', pageId] })
-        }, 8_000)
+          if (Date.now() - started < 40_000) window.setTimeout(tick, 5_000)
+        }
+        window.setTimeout(tick, 4_000)
         return
       }
       if (!silent) {

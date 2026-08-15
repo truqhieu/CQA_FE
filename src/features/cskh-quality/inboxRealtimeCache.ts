@@ -106,8 +106,17 @@ function matchesConversationFilter(
   activeFilter: string | undefined,
   search: string | undefined,
   labelFilter: string | undefined,
+  platformFilter?: string,
+  platformScopeKey?: string,
 ): boolean {
   if (pageIdFilter && conv.pageId !== pageIdFilter) return false
+  if (platformScopeKey) {
+    const allowed = platformScopeKey.split(',').filter(Boolean)
+    if (allowed.length > 0 && !allowed.includes(conv.pageId)) return false
+  }
+  if (platformFilter === 'instagram' && conv.platform && conv.platform !== 'instagram') return false
+  if (platformFilter === 'facebook' && conv.platform === 'instagram') return false
+  if (platformFilter === 'threads' || platformFilter === 'youtube') return false
   if (activeFilter === 'ads' && !conv.fromAd) return false
   if (activeFilter === 'unread' && !(conv.unreadCount > 0 || conv.awaitingLabel)) return false
   if (activeFilter === 'normal' && conv.fromAd) return false
@@ -170,6 +179,8 @@ function patchInfiniteConversationList(
   const activeFilter = key[4] as string | undefined
   const search = (key[5] as string | undefined) || undefined
   const labelFilter = (key[6] as string | undefined) ?? 'all'
+  const platformFilter = (key[7] as string | undefined) ?? 'all'
+  const platformScopeKey = (key[8] as string | undefined) ?? ''
 
   const pages = prev.pages.map((p) => ({ ...p, items: [...p.items] }))
   let foundPage = -1
@@ -194,6 +205,8 @@ function patchInfiniteConversationList(
       activeFilter,
       search,
       labelFilter,
+      platformFilter,
+      platformScopeKey,
     )
     if (!stillMatches) {
       pages[foundPage].items.splice(foundIdx, 1)
@@ -224,7 +237,7 @@ function patchInfiniteConversationList(
     }
   } else {
     const row = patch as CskhInboxConversation
-    if (matchesConversationFilter(row, pageIdFilter, activeFilter, search, labelFilter)) {
+    if (matchesConversationFilter(row, pageIdFilter, activeFilter, search, labelFilter, platformFilter, platformScopeKey)) {
       pages[0].items = [row, ...pages[0].items.filter((c) => c.id !== row.id)]
       pages[0].items.sort(sortConversationsByRecent)
       action = 'inserted-top'
