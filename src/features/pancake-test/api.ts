@@ -135,6 +135,7 @@ export async function fetchPancakeLeads(
 
 export async function syncPancakePageCustomers(pageId: string) {
   const { data } = await apiClient.post<{
+    queued?: boolean
     pageId: string
     pageName: string | null
     fetched: number
@@ -144,6 +145,7 @@ export async function syncPancakePageCustomers(pageId: string) {
     withPhoneCount: number
     withAddressCount?: number
     closedCount?: number
+    autoLabelQueued?: boolean
     autoLabel?: { scanned: number; closed: number; follow: number; candidates: number }
     pageTokenRegenerated: boolean
     warning: string | null
@@ -156,6 +158,7 @@ export async function syncPancakePageCustomers(pageId: string) {
 
 export async function syncAllPancakePages() {
   const { data } = await apiClient.post<{
+    queued?: boolean
     totalPages: number
     ok: number
     failed: number

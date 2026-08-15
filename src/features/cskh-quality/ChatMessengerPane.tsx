@@ -19,7 +19,9 @@ import {
   fetchInboxLabels,
   type CskhInboxConversation,
   type CskhInboxConversationPage,
+  type CskhInboxConversationStats,
   type CskhInboxMessage,
+  type CskhPage,
 } from './api'
 import { ChatListPanel } from './ChatListPanel'
 import { ChatPanel } from './ChatPanel'
@@ -32,7 +34,9 @@ import { inboxRtLog } from './inboxRealtimeDebug'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/custom-ui/select'
@@ -42,6 +46,97 @@ type ChatMessengerPaneProps = {
 }
 
 type FilterTab = 'all' | 'unread' | 'ads' | 'normal'
+type PlatformFilter = 'all' | 'facebook' | 'instagram' | 'threads' | 'youtube'
+
+const PLATFORM_TABS = [
+  { key: 'all' as const, label: 'Tất cả' },
+  { key: 'facebook' as const, label: 'Facebook' },
+  { key: 'instagram' as const, label: 'Instagram' },
+  { key: 'threads' as const, label: 'Threads' },
+  { key: 'youtube' as const, label: 'YouTube' },
+]
+
+const EMPTY_CONV_PAGE: CskhInboxConversationPage = { items: [], nextCursor: null, hasMore: false }
+const EMPTY_STATS: CskhInboxConversationStats = { total: 0, fromAd: 0, unread: 0, normal: 0 }
+
+function pageBucket(platform?: string): Exclude<PlatformFilter, 'all'> {
+  if (platform === 'instagram') return 'instagram'
+  if (platform === 'threads') return 'threads'
+  if (platform === 'youtube') return 'youtube'
+  return 'facebook'
+}
+
+function graphPlatformParam(filter: PlatformFilter): 'messenger' | 'instagram' | undefined {
+  if (filter === 'instagram') return 'instagram'
+  if (filter === 'facebook') return 'messenger'
+  return undefined
+}
+
+function hasConnectedInbox(filter: PlatformFilter): boolean {
+  return filter === 'all' || filter === 'facebook' || filter === 'instagram'
+}
+
+function platformTabClass(on: boolean, key: PlatformFilter): string {
+  if (!on) return 'text-slate-500 hover:text-slate-700'
+  if (key === 'instagram') return 'bg-white text-pink-600 shadow-sm'
+  if (key === 'facebook') return 'bg-white text-blue-600 shadow-sm'
+  if (key === 'youtube') return 'bg-white text-red-600 shadow-sm'
+  if (key === 'threads') return 'bg-white text-slate-900 shadow-sm'
+  return 'bg-white text-slate-800 shadow-sm'
+}
+
+function InboxPageSelectItems({
+  pages,
+  platformFilter,
+  pagesLoading,
+}: {
+  pages: CskhPage[]
+  platformFilter: PlatformFilter
+  pagesLoading: boolean
+}) {
+  const groups = [
+    { key: 'facebook' as const, label: 'Facebook', items: pages.filter((p) => pageBucket(p.platform) === 'facebook') },
+    { key: 'instagram' as const, label: 'Instagram', items: pages.filter((p) => pageBucket(p.platform) === 'instagram') },
+    { key: 'threads' as const, label: 'Threads', items: pages.filter((p) => pageBucket(p.platform) === 'threads') },
+    { key: 'youtube' as const, label: 'YouTube', items: pages.filter((p) => pageBucket(p.platform) === 'youtube') },
+  ]
+  const allLabel =
+    platformFilter === 'instagram'
+      ? 'IG'
+      : platformFilter === 'facebook'
+        ? 'FB'
+        : platformFilter === 'threads'
+          ? 'Threads'
+          : platformFilter === 'youtube'
+            ? 'YouTube'
+            : 'kênh'
+
+  return (
+    <>
+      <SelectItem value="all">
+        Tất cả {allLabel} ({pagesLoading ? '…' : pages.length})
+      </SelectItem>
+      {platformFilter === 'all'
+        ? groups
+            .filter((g) => g.items.length > 0)
+            .map((g) => (
+              <SelectGroup key={g.key}>
+                <SelectLabel>{g.label}</SelectLabel>
+                {g.items.map((page) => (
+                  <SelectItem key={page.pageId} value={page.pageId}>
+                    {page.pageName || page.pageId}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            ))
+        : pages.map((page) => (
+            <SelectItem key={page.pageId} value={page.pageId}>
+              {page.pageName || page.pageId}
+            </SelectItem>
+          ))}
+    </>
+  )
+}
 
 export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   const [selectedConversation, setSelectedConversation] = useState<CskhInboxConversation | null>(null)
@@ -54,6 +149,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all')
   const [labelFilter, setLabelFilter] = useState<InboxLabelFilterValue>('all')
   const [selectedPageId, setSelectedPageId] = useState<string | undefined>(pageId)
+  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>('all')
   const [, startFilterTransition] = useTransition()
 
   useEffect(() => {
@@ -99,11 +195,29 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
 
   const pagesLoading = isLoadingPages && !pagesData
 
+  const allPages = useMemo(() => pagesData?.pages ?? [], [pagesData])
+  const filteredPages = useMemo(() => {
+    if (platformFilter === 'all') return allPages
+    return allPages.filter((p) => pageBucket(p.platform) === platformFilter)
+  }, [allPages, platformFilter])
+
+  const inboxPlatformReady = hasConnectedInbox(platformFilter)
+
+  useEffect(() => {
+    if (!selectedPageId || platformFilter === 'all') return
+    const stillVisible = filteredPages.some((p) => p.pageId === selectedPageId)
+    if (!stillVisible) setSelectedPageId(undefined)
+  }, [selectedPageId, platformFilter, filteredPages])
+
   const pageKey = selectedPageId ?? 'all'
+  const graphPlatform = graphPlatformParam(platformFilter)
 
   const { data: convStats, isError: statsError, error: statsErr } = useQuery({
-    queryKey: ['cskh', 'inbox', 'conversation-stats', pageKey],
-    queryFn: () => fetchInboxConversationStats({ pageId: selectedPageId }),
+    queryKey: ['cskh', 'inbox', 'conversation-stats', pageKey, platformFilter],
+    queryFn: () =>
+      inboxPlatformReady
+        ? fetchInboxConversationStats({ pageId: selectedPageId, platform: graphPlatform })
+        : Promise.resolve(EMPTY_STATS),
     staleTime: 30_000,
   })
 
@@ -131,7 +245,8 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
       labelId?: string
       unlabeledOnly?: boolean
       includeLabels?: boolean
-    } = { pageId: selectedPageId }
+      platform?: 'messenger' | 'instagram'
+    } = { pageId: selectedPageId, platform: graphPlatform }
     switch (activeFilter) {
       case 'ads':
         base.fromAdOnly = true
@@ -150,11 +265,24 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
     }
     base.includeLabels = labelFilter !== 'all'
     return base
-  }, [selectedPageId, activeFilter, labelFilter])
+  }, [selectedPageId, activeFilter, labelFilter, graphPlatform])
 
   const listQueryKey = useMemo(
-    () => ['cskh', 'inbox', 'conversations', pageKey, activeFilter, debouncedSearch, labelFilter] as const,
-    [pageKey, activeFilter, debouncedSearch, labelFilter],
+    () =>
+      [
+        'cskh',
+        'inbox',
+        'conversations',
+        pageKey,
+        activeFilter,
+        debouncedSearch,
+        labelFilter,
+        platformFilter,
+        platformFilter === 'all' || selectedPageId
+          ? ''
+          : filteredPages.map((p) => p.pageId).sort().join(','),
+      ] as const,
+    [pageKey, activeFilter, debouncedSearch, labelFilter, platformFilter, selectedPageId, filteredPages],
   )
 
   const {
@@ -169,17 +297,19 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   } = useInfiniteQuery({
     queryKey: listQueryKey,
     queryFn: ({ pageParam }) =>
-      fetchInboxConversationsPage({
-        ...conversationFetchOpts,
-        cursor: pageParam as string | undefined,
-        search: debouncedSearch || undefined,
-        limit: 50,
-      }),
+      inboxPlatformReady
+        ? fetchInboxConversationsPage({
+            ...conversationFetchOpts,
+            cursor: pageParam as string | undefined,
+            search: debouncedSearch || undefined,
+            limit: 50,
+          })
+        : Promise.resolve(EMPTY_CONV_PAGE),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     staleTime: 60_000,
     refetchOnWindowFocus: true,
-    refetchInterval: 3_000,
+    refetchInterval: false,
   })
 
   const isRefreshingList = isFetching && !isFetchingNextPage && !isLoadingConversations
@@ -190,6 +320,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   )
 
   const scheduleListHeadRefresh = useCallback(() => {
+    if (!inboxPlatformReady) return
     if (listHeadRefreshTimerRef.current) clearTimeout(listHeadRefreshTimerRef.current)
     listHeadRefreshTimerRef.current = setTimeout(() => {
       inboxRtLog('Safety refresh — fetch lại trang đầu list sau SSE')
@@ -228,7 +359,14 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
           inboxRtLog('Safety refresh failed', { error: String(err) })
         })
     }, 1200)
-  }, [qc, listQueryKey, conversationFetchOpts, debouncedSearch])
+  }, [qc, listQueryKey, conversationFetchOpts, debouncedSearch, inboxPlatformReady])
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      scheduleListHeadRefresh()
+    }, 3_000)
+    return () => window.clearInterval(id)
+  }, [scheduleListHeadRefresh])
 
   const handleRealtimeMessage = useCallback(
     (conversationId: string) => {
@@ -275,6 +413,18 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
 
   const listEmptyHint = useMemo(() => {
     if (listError) return getApiErrorMessage(listErr) || 'Không tải được danh sách hội thoại'
+    if (platformFilter === 'threads') {
+      return 'Chưa kết nối Threads. Hội thoại sẽ xuất hiện ở đây khi OAuth được bật.'
+    }
+    if (platformFilter === 'youtube') {
+      return 'Chưa kết nối YouTube. Hội thoại sẽ xuất hiện ở đây khi OAuth được bật.'
+    }
+    if (platformFilter === 'instagram' && filteredPages.length === 0 && !pagesLoading) {
+      return 'Chưa có kênh Instagram. Gắn Instagram Professional vào Fanpage rồi Cập nhật kết nối Facebook.'
+    }
+    if (platformFilter === 'facebook' && filteredPages.length === 0 && !pagesLoading) {
+      return 'Chưa có Fanpage. Kết nối Facebook ở Cài đặt kênh.'
+    }
     if (labelFilter === 'unlabeled' && (convStats?.total ?? 0) > 0) {
       return 'Không có hội thoại nào chưa gán nhãn với bộ lọc hiện tại'
     }
@@ -285,7 +435,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
       return 'Không còn hội thoại chưa đọc'
     }
     return undefined
-  }, [listError, listErr, labelFilter, convStats, activeFilter])
+  }, [listError, listErr, labelFilter, convStats, activeFilter, platformFilter, filteredPages.length, pagesLoading])
 
   const showMigrationHint =
     labelFilter !== 'all' &&
@@ -336,10 +486,6 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
       toast.error('Đồng bộ thất bại, vui lòng thử lại')
     },
   })
-
-  const allPages = useMemo(() => {
-    return pagesData?.pages ?? []
-  }, [pagesData])
 
   const [inputDraft, setInputDraft] = useState<string>('')
 
@@ -517,6 +663,24 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
         {/* Right side filters */}
         <div className="hidden md:flex items-center gap-3 text-xs">
           <div className="flex items-center gap-1.5">
+            <span className="text-slate-400 font-medium">Nền tảng:</span>
+            <div className="flex rounded-lg border border-slate-200 bg-slate-50/80 p-0.5 overflow-x-auto max-w-[460px]">
+              {PLATFORM_TABS.map((tab) => {
+                const on = platformFilter === tab.key
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() =>
+                      startFilterTransition(() => setPlatformFilter(tab.key))
+                    }
+                    className={`h-6 px-2 rounded-md text-[10px] font-bold transition-colors whitespace-nowrap ${platformTabClass(on, tab.key)}`}
+                  >
+                    {tab.label}
+                  </button>
+                )
+              })}
+            </div>
             <span className="text-slate-400 font-medium">Trang:</span>
             <Select
               value={selectedPageId ?? 'all'}
@@ -527,14 +691,11 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
                 <SelectValue placeholder={pagesLoading ? 'Đang tải Page...' : 'Tất cả Page'} />
               </SelectTrigger>
               <SelectContent className="max-h-72 bg-white rounded-lg">
-                <SelectItem value="all">
-                  Tất cả Page ({pagesLoading ? '…' : allPages.length})
-                </SelectItem>
-                {allPages.map((page) => (
-                  <SelectItem key={page.pageId} value={page.pageId}>
-                    {page.pageName || `Kênh ${page.pageId}`}
-                  </SelectItem>
-                ))}
+                <InboxPageSelectItems
+                  pages={filteredPages}
+                  platformFilter={platformFilter}
+                  pagesLoading={pagesLoading}
+                />
               </SelectContent>
             </Select>
           </div>
@@ -658,7 +819,22 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
           </div>
 
           {/* Mobile page selector */}
-          <div className="px-3 py-2 border-b border-slate-100 md:hidden">
+          <div className="px-3 py-2 border-b border-slate-100 md:hidden space-y-2">
+            <div className="flex rounded-lg border border-slate-200 bg-slate-50/80 p-0.5 overflow-x-auto">
+              {PLATFORM_TABS.map((tab) => {
+                const on = platformFilter === tab.key
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => startFilterTransition(() => setPlatformFilter(tab.key))}
+                    className={`flex-1 min-w-[56px] h-7 rounded-md text-[10px] font-bold whitespace-nowrap ${platformTabClass(on, tab.key)}`}
+                  >
+                    {tab.label}
+                  </button>
+                )
+              })}
+            </div>
             <Select
               value={selectedPageId ?? 'all'}
               onValueChange={(val: string) => setSelectedPageId(val === 'all' ? undefined : val)}
@@ -668,14 +844,11 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
                 <SelectValue placeholder={pagesLoading ? 'Đang tải kênh...' : 'Tất cả kênh'} />
               </SelectTrigger>
               <SelectContent className="max-h-72 bg-white rounded-lg">
-                <SelectItem value="all">
-                  Tất cả kênh ({pagesLoading ? '…' : allPages.length})
-                </SelectItem>
-                {allPages.map((page) => (
-                  <SelectItem key={page.pageId} value={page.pageId}>
-                    {page.pageName || `Kênh ${page.pageId}`}
-                  </SelectItem>
-                ))}
+                <InboxPageSelectItems
+                  pages={filteredPages}
+                  platformFilter={platformFilter}
+                  pagesLoading={pagesLoading}
+                />
               </SelectContent>
             </Select>
           </div>
