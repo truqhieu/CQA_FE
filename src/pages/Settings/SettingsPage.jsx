@@ -6,7 +6,8 @@ import { Link2, Loader2, RefreshCw, Trash2 } from 'lucide-react';
 import {
   MagnifyingGlass, FloppyDisk, Sparkle, CheckCircle, CaretRight, Sliders, Play, GearSix,
   Shield, HardDrive, ArrowsCounterClockwise, Megaphone, Package, Wrench, Brain, Key,
-  FacebookLogo, InstagramLogo, YoutubeLogo, ThreadsLogo
+  FacebookLogo, InstagramLogo, YoutubeLogo, ThreadsLogo,
+  Lightbulb, Bell, Link, ClipboardText
 } from '@phosphor-icons/react';
 import { settingsTabs, qaPrompts, qaCriteria, settingsQuickLinks } from '../../data/mockData';
 import {
