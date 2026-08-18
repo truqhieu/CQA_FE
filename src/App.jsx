@@ -8,17 +8,12 @@ import PrivacyPage from "./pages/PrivacyPage";
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/axios";
-import { restoreAuthAfterOAuth } from "@/lib/authSession";
 import PageLoader from "@/components/PageLoader";
 import { CSKH_PAGES_LITE_QUERY_KEY, fetchCskhPages } from "@/features/cskh-quality/api";
 import SapoOAuthBridge, { sapoOAuthBridgeRedirect } from "./pages/SapoOAuthBridge";
 
 function ProtectedLayout() {
-  restoreAuthAfterOAuth();
   const queryClient = useQueryClient();
-
-  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('authToken') : null;
-  const hasToken = !!token && token !== 'undefined' && token !== 'null';
 
   const { data: userProfile, isLoading, isError, error, failureReason } = useQuery({
     queryKey: ['currentUserProfile'],
@@ -26,7 +21,6 @@ function ProtectedLayout() {
       const response = await apiClient.get('/auth/me');
       return response.data.data;
     },
-    enabled: hasToken,
     retry: false,
     staleTime: 5 * 60 * 1000,
   });
@@ -39,10 +33,6 @@ function ProtectedLayout() {
       staleTime: 300_000,
     });
   }, [userProfile, queryClient]);
-
-  if (!hasToken) {
-    return <Navigate to="/login" replace />;
-  }
 
   if (isLoading) {
     return (
@@ -59,10 +49,6 @@ function ProtectedLayout() {
       ? failureReason.response?.status
       : undefined;
   if (isError && authStatus === 401) {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('refreshToken');
-    }
     return <Navigate to="/login" replace />;
   }
 

@@ -2,12 +2,13 @@ import { useEffect, useRef, useMemo, useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { getApiErrorMessage } from '@/lib/axios'
-import { Loader2, AlertCircle, X, Mail } from 'lucide-react'
+import { Loader2, AlertCircle, X, Mail, Languages } from 'lucide-react'
 import {
   fetchInboxMessages,
   fetchInboxMessagesProgressive,
   sendInboxMessage,
   detectInboxConversationLang,
+  translateInboxConversation,
   notifyInboxTyping,
   markInboxAsUnread,
   type CskhInboxConversation,
@@ -18,7 +19,8 @@ import { ChatMessageInput } from './ChatMessageInput'
 import { ChatLabelBar, ConversationLabelBadges } from './ChatLabelBar'
 import { ConversationViewHistory } from './ConversationViewHistory'
 import { TypingIndicator } from './TypingIndicator'
-import { cskhMediaProxySrc } from './messageMedia'
+import { CskhPageAvatar } from './cskhUi'
+import { AiFaceIcon } from './AiFaceIcon'
 import { appendInboxMessagesToCache, patchInboxConversationInCache, isInboxMessagePreview, collapseInboxMessageList } from './inboxRealtimeCache'
 
 type ChatPanelProps = {
@@ -28,6 +30,8 @@ type ChatPanelProps = {
   connected?: boolean
   draftText?: string
   onDraftApplied?: () => void
+  assistantOpen?: boolean
+  onToggleAssistant?: () => void
 }
 
 export function ChatPanel({
@@ -37,6 +41,8 @@ export function ChatPanel({
   connected,
   draftText,
   onDraftApplied,
+  assistantOpen,
+  onToggleAssistant,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastMessageIdRef = useRef<string>('')
@@ -77,6 +83,21 @@ export function ChatPanel({
     markUnreadMutation.mutate(conversation.id)
   }
 
+  const translateThreadMut = useMutation({
+    mutationFn: () => translateInboxConversation(conversation.id),
+    onSuccess: async (res) => {
+      await qc.invalidateQueries({ queryKey: ['cskh', 'inbox', 'messages', conversation.id] })
+      toast.success(
+        res.translated > 0
+          ? `Đã dịch ${res.translated} tin (khách + shop)`
+          : 'Các tin đã có bản tiếng Việt',
+      )
+    },
+    onError: (err) => {
+      toast.error(getApiErrorMessage(err) || 'Dịch hội thoại thất bại')
+    },
+  })
+
   // Fetch messages — dùng chung cache với ChatMessengerPane (prefetch khi click)
   const { data: messagesData, isLoading, isFetching, isPending, isFetched } = useQuery({
     queryKey: ['cskh', 'inbox', 'messages', conversation.id],
@@ -102,9 +123,16 @@ export function ChatPanel({
 
   // Send message mutation
   const sendMut = useMutation({
-    mutationFn: ({ text, autoTranslate }: { text: string; autoTranslate?: boolean }) =>
-      sendInboxMessage(conversation.id, text, { autoTranslate }),
-    onMutate: async ({ text, autoTranslate }) => {
+    mutationFn: ({
+      text,
+      autoTranslate,
+      originalText,
+    }: {
+      text: string
+      autoTranslate?: boolean
+      originalText?: string
+    }) => sendInboxMessage(conversation.id, text, { autoTranslate, originalText }),
+    onMutate: async ({ text, autoTranslate, originalText }) => {
       // Cancel outgoing refetches so they don't overwrite our optimistic update
       await qc.cancelQueries({ queryKey: ['cskh', 'inbox', 'messages', conversation.id] })
 
@@ -117,8 +145,8 @@ export function ChatPanel({
         direction: 'outbound',
         senderType: 'staff',
         text,
-        originalText: autoTranslate ? text : null,
-        translatedText: autoTranslate ? text : null,
+        originalText: originalText || (autoTranslate ? text : null),
+        translatedText: originalText || (autoTranslate ? text : null),
         messageType: 'text',
         attachmentUrl: null,
         sentAt: new Date().toISOString(),
@@ -336,17 +364,14 @@ export function ChatPanel({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200/60 bg-white shrink-0">
         <div className="flex items-center gap-3">
-          {conversation.customerPictureUrl ? (
-            <img
-              src={cskhMediaProxySrc(conversation.customerPictureUrl)}
-              alt={conversation.customerName || 'Customer'}
-              className="w-9 h-9 rounded-full object-cover ring-2 ring-slate-100"
-            />
-          ) : (
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-400 to-violet-600 flex items-center justify-center text-white text-xs font-bold ring-2 ring-slate-100">
-              {(conversation.customerName || 'K').charAt(0).toUpperCase()}
-            </div>
-          )}
+          <CskhPageAvatar
+            name={conversation.customerName || 'K'}
+            pictureUrl={conversation.customerPictureUrl}
+            pageId={conversation.pageId}
+            psid={conversation.participantPsid}
+            liveFetch
+            className="h-9 w-9 rounded-full text-xs ring-2 ring-slate-100"
+          />
           <div>
             <h3 className="text-[13px] font-bold text-slate-800 leading-tight">
               {conversationWithLabels.customerName ||
@@ -370,12 +395,40 @@ export function ChatPanel({
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          {onToggleAssistant && (
+            <button
+              type="button"
+              onClick={onToggleAssistant}
+              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200 cursor-pointer ${
+                assistantOpen
+                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
+                  : 'text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50'
+              }`}
+              title={assistantOpen ? 'Thu gọn AI nội bộ' : 'Mở AI Assistant nội bộ'}
+            >
+              <AiFaceIcon className="h-5 w-5" blinking />
+            </button>
+          )}
           <ConversationViewHistory
             conversationId={conversation.id}
             pendingCount={
               conversationWithLabels.viewers?.filter((v) => !v.hasChot).length ?? 0
             }
           />
+          <button
+            type="button"
+            onClick={() => translateThreadMut.mutate()}
+            disabled={translateThreadMut.isPending || showInitialLoader}
+            className="inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-indigo-600 hover:bg-indigo-50 transition-all duration-200 cursor-pointer disabled:opacity-50"
+            title="Dịch tin khách và tin mình sang tiếng Việt"
+          >
+            {translateThreadMut.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Languages className="w-3.5 h-3.5" />
+            )}
+            Dịch
+          </button>
           <button
             onClick={handleMarkAsUnread}
             disabled={markUnreadMutation.isPending}
@@ -442,7 +495,11 @@ export function ChatPanel({
             customerLang={conversationWithLabels.customerLang}
             customerLangLabel={conversationWithLabels.customerLangLabel}
             onSend={async (text, options) => {
-              await sendMut.mutateAsync({ text, autoTranslate: options?.autoTranslate })
+              await sendMut.mutateAsync({
+                text,
+                autoTranslate: options?.autoTranslate,
+                originalText: options?.originalText,
+              })
             }}
             onTyping={handleTyping}
             disabled={sendMut.isPending}

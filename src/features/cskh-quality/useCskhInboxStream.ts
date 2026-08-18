@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/axios'
 import { markInboxAsRead, type CskhCustomerIntent } from './api'
 import {
@@ -25,6 +25,16 @@ type UseCskhInboxStreamOptions = {
   onIntent?: (conversationId: string, intent: CskhCustomerIntent) => void
   /** Gọi khi có tin mới qua SSE — dùng highlight hàng trong danh sách. */
   onNewMessage?: (conversationId: string) => void
+}
+
+let statsRefreshTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleConversationStatsRefresh(qc: QueryClient) {
+  if (statsRefreshTimer) return
+  statsRefreshTimer = setTimeout(() => {
+    statsRefreshTimer = null
+    void qc.invalidateQueries({ queryKey: ['cskh', 'inbox', 'conversation-stats'] })
+  }, 8_000)
 }
 
 /**
@@ -68,13 +78,9 @@ export function useCskhInboxStream({
     })
 
     const base = (apiClient.defaults.baseURL || 'http://localhost:3000/api/v1').replace(/\/$/, '')
-    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('authToken') : null
-    const streamUrl = token
-      ? `${base}/cskh/inbox/stream?token=${encodeURIComponent(token)}`
-      : `${base}/cskh/inbox/stream`
+    const streamUrl = `${base}/cskh/inbox/stream`
     inboxRtLog('SSE connecting', {
       base,
-      hasToken: Boolean(token),
       streamPath: '/cskh/inbox/stream',
     })
     const es = new EventSource(streamUrl, { withCredentials: true })
@@ -85,7 +91,7 @@ export function useCskhInboxStream({
       if (disconnectTimer) clearTimeout(disconnectTimer)
       setConnected(true)
       inboxRtLog('SSE connected (Live)', { readyState: es.readyState })
-      void qc.invalidateQueries({ queryKey: ['cskh', 'inbox', 'conversation-stats'] })
+      void scheduleConversationStatsRefresh(qc)
     }
     es.onerror = () => {
       inboxRtWarn('SSE error — sẽ hiện Offline sau 4s nếu không reconnect', {
@@ -162,7 +168,7 @@ export function useCskhInboxStream({
               'sse-message-fallback-patch',
             )
           }
-          void qc.invalidateQueries({ queryKey: ['cskh', 'inbox', 'conversation-stats'] })
+          void scheduleConversationStatsRefresh(qc)
           inboxRtLog('SSE message applied → bump list', {
             conversationId: data.conversationId,
             lastMessageAt: data.conversation?.lastMessageAt ?? lastMsg?.sentAt,
@@ -205,7 +211,7 @@ export function useCskhInboxStream({
 
         if (data.type === 'conversation') {
           if (data.conversationId && data.conversation?.lastMessageAt) {
-            void qc.invalidateQueries({ queryKey: ['cskh', 'inbox', 'conversation-stats'] })
+            void scheduleConversationStatsRefresh(qc)
             inboxRtLog('SSE conversation bump', {
               conversationId: data.conversationId,
               lastMessageAt: data.conversation.lastMessageAt,

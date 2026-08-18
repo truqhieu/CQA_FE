@@ -32,21 +32,10 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    let token = null;
-    let refreshToken = null;
-    const hash = window.location.hash;
-    if (hash?.startsWith('#')) {
-      const params = new URLSearchParams(hash.substring(1));
-      token = params.get('token');
-      refreshToken = params.get('refreshToken');
-    }
-    if (!token) token = searchParams.get('token');
-    if (!refreshToken) refreshToken = searchParams.get('refreshToken');
+    const oauthOk = searchParams.get('oauth') === 'ok';
     const errorParam = searchParams.get('error');
 
-    if (token) {
-      localStorage.setItem('authToken', token);
-      if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
+    if (oauthOk) {
       window.history.replaceState(null, '', window.location.pathname);
       toast.success('Đăng nhập thành công!');
       navigate('/', { replace: true });
@@ -68,15 +57,10 @@ export default function LoginPage() {
     }
     setIsSubmitting(true);
     try {
-      const { data } = await apiClient.post('/auth/login', {
+      await apiClient.post('/auth/login', {
         email: username.trim(),
         password,
       });
-      const accessToken = data?.data?.accessToken;
-      const refreshToken = data?.data?.refreshToken;
-      if (!accessToken) throw new Error('Không nhận được token đăng nhập');
-      localStorage.setItem('authToken', accessToken);
-      if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
       toast.success('Đăng nhập thành công!');
       navigate('/', { replace: true });
     } catch (err) {

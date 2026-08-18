@@ -3,7 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { Loader2, MessageCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type CskhInboxConversation } from './api'
-import { cskhMediaProxySrc } from './messageMedia'
+import { CskhPageAvatar } from './cskhUi'
 import { ConversationLabelBadges } from './ChatLabelBar'
 
 type ChatListPanelProps = {
@@ -28,28 +28,6 @@ type ChatListPanelProps = {
 const ROW_HEIGHT = 108
 const LOAD_MORE_ROW_HEIGHT = 52
 
-const avatarColors = [
-  'from-blue-400 to-blue-600',
-  'from-purple-400 to-purple-600',
-  'from-emerald-400 to-emerald-600',
-  'from-amber-400 to-amber-600',
-  'from-rose-400 to-rose-600',
-  'from-cyan-400 to-cyan-600',
-  'from-indigo-400 to-indigo-600',
-  'from-orange-400 to-orange-600',
-  'from-teal-400 to-teal-600',
-  'from-pink-400 to-pink-600',
-]
-
-function getColorIndex(name: string | null): number {
-  if (!name) return 0
-  let hash = 0
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash)
-  }
-  return Math.abs(hash) % avatarColors.length
-}
-
 function formatTime(isoString: string | null): string {
   if (!isoString) return ''
   const date = new Date(isoString)
@@ -71,11 +49,32 @@ function formatTime(isoString: string | null): string {
   return date.toLocaleDateString('vi-VN')
 }
 
+/** Khách đã nhắn, sale chưa trả — thời gian chờ nhìn thấy ngay trên list. */
+function customerWaitInfo(conv: CskhInboxConversation): {
+  label: string
+  tone: 'amber' | 'orange' | 'red'
+} | null {
+  if (!(conv.unreadCount > 0) || !conv.lastMessageAt) return null
+  const diffMs = Date.now() - new Date(conv.lastMessageAt).getTime()
+  if (diffMs < 0) return null
+  const mins = Math.floor(diffMs / 60_000)
+  const hours = Math.floor(mins / 60)
+  const days = Math.floor(hours / 24)
+  let label = 'Chưa TL · <1p'
+  if (mins < 1) label = 'Chưa TL · <1p'
+  else if (mins < 60) label = `Chưa TL · ${mins}p`
+  else if (hours < 24) label = `Chưa TL · ${hours}h${mins % 60 ? ` ${mins % 60}p` : ''}`
+  else label = `Chưa TL · ${days}n`
+  const tone = mins >= 30 ? 'red' : mins >= 5 ? 'orange' : 'amber'
+  return { label, tone }
+}
+
 type ConversationRowProps = {
   conv: CskhInboxConversation
   isSelected: boolean
   isTyping: boolean
   isRecentlyBumped?: boolean
+  nowTick?: number
   onSelect: (conversation: CskhInboxConversation) => void
   onPrefetch?: (conversation: CskhInboxConversation) => void
 }
@@ -85,13 +84,14 @@ const ConversationRow = memo(function ConversationRow({
   isSelected,
   isTyping,
   isRecentlyBumped,
+  nowTick: _nowTick,
   onSelect,
   onPrefetch,
 }: ConversationRowProps) {
-  const colorIdx = getColorIndex(conv.customerName)
   const hasUnread = !isSelected && conv.unreadCount > 0
   const needsLabel = !isSelected && !!conv.awaitingLabel && conv.unreadCount <= 0
   const unreadBadge = Math.min(conv.unreadCount, 99)
+  const wait = customerWaitInfo(conv)
 
   return (
     <button
@@ -113,19 +113,13 @@ const ConversationRow = memo(function ConversationRow({
       )}
       <div className="flex gap-2.5">
         <div className="relative shrink-0">
-          {conv.customerPictureUrl ? (
-            <img
-              src={cskhMediaProxySrc(conv.customerPictureUrl)}
-              alt={conv.customerName || 'Customer'}
-              className="w-10 h-10 rounded-full object-cover border border-slate-200"
-            />
-          ) : (
-            <div
-              className={`w-10 h-10 rounded-full bg-gradient-to-br ${avatarColors[colorIdx]} flex items-center justify-center text-white text-xs font-bold shadow-sm`}
-            >
-              {(conv.customerName || 'K').charAt(0).toUpperCase()}
-            </div>
-          )}
+          <CskhPageAvatar
+            name={conv.customerName || 'K'}
+            pictureUrl={conv.customerPictureUrl}
+            pageId={conv.pageId}
+            psid={conv.participantPsid}
+            className="h-10 w-10 rounded-full border border-slate-200 text-xs shadow-sm"
+          />
           {hasUnread && (
             <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-orange-500 rounded-full border-2 border-white" />
           )}
@@ -151,9 +145,25 @@ const ConversationRow = memo(function ConversationRow({
                 </span>
               )}
             </div>
-            <span className="text-[10px] text-slate-400 shrink-0 font-medium tabular-nums">
-              {formatTime(conv.lastMessageAt)}
-            </span>
+            {wait ? (
+              <span
+                className={cn(
+                  'shrink-0 text-[9.5px] font-bold tabular-nums px-1.5 py-0.5 rounded-md leading-none',
+                  wait.tone === 'red'
+                    ? 'bg-red-50 text-red-600 border border-red-200'
+                    : wait.tone === 'orange'
+                      ? 'bg-orange-50 text-orange-600 border border-orange-200'
+                      : 'bg-amber-50 text-amber-700 border border-amber-200',
+                )}
+                title="Thời gian khách chờ phản hồi"
+              >
+                {wait.label}
+              </span>
+            ) : (
+              <span className="text-[10px] text-slate-400 shrink-0 font-medium tabular-nums">
+                {formatTime(conv.lastMessageAt)}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-1 mt-0.5">
@@ -196,7 +206,7 @@ const ConversationRow = memo(function ConversationRow({
                   </span>
                 </span>
               ) : (
-                conv.lastMessage || '[Không có tin nhắn]'
+                {conv.lastMessage?.trim() || '[Không có tin nhắn]'}
               )}
             </div>
             {hasUnread && (
@@ -252,10 +262,9 @@ export function ChatListPanel({
 }: ChatListPanelProps) {
   const parentRef = useRef<HTMLDivElement>(null)
   const prevTopIdRef = useRef<string | null>(null)
-  // Cập nhật "Vừa xong" / "5p trước" mà không cần reload list
-  const [, timeTick] = useState(0)
+  const [nowTick, setNowTick] = useState(0)
   useEffect(() => {
-    const t = window.setInterval(() => timeTick((n: number) => n + 1), 30_000)
+    const t = window.setInterval(() => setNowTick((n) => n + 1), 15_000)
     return () => window.clearInterval(t)
   }, [])
 
@@ -407,6 +416,7 @@ export function ChatListPanel({
                 isSelected={selectedConversationId === conv.id}
                 isTyping={typingConversationIds.has(conv.id)}
                 isRecentlyBumped={bumpedConversationIds.has(conv.id)}
+                nowTick={nowTick}
                 onSelect={onSelect}
                 onPrefetch={onPrefetch}
               />

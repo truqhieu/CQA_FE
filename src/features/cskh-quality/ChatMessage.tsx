@@ -30,10 +30,15 @@ export const ChatMessage = memo(function ChatMessage({ message, isOwn }: ChatMes
     })
   }
 
+  const looksVietnamese = (s: string) =>
+    /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(s)
+  const mainText = (message.text || '').trim()
   const viText = (message.originalText || message.translatedText || '').trim()
+  const bothVietnamese = looksVietnamese(mainText) && looksVietnamese(viText)
   const showVi =
     Boolean(viText) &&
-    viText !== (message.text || '').trim() &&
+    viText !== mainText &&
+    !bothVietnamese &&
     (message.messageType === 'text' || !message.messageType)
 
   const renderContent = () => {

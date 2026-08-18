@@ -54,15 +54,19 @@ function collapseInboxMessages(messages: CskhInboxMessage[]): CskhInboxMessage[]
     (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime(),
   )
   const out: CskhInboxMessage[] = []
+  const attKey = (url?: string | null) => (url || '').split('?')[0]
   for (const m of collapsed) {
     const last = out[out.length - 1]
-    if (
+    const lastText = (last?.text || '').replace(/\s+/g, ' ').trim()
+    const nextText = (m.text || '').replace(/\s+/g, ' ').trim()
+    const sameEcho =
       last &&
       last.direction === 'outbound' &&
       m.direction === 'outbound' &&
-      (last.text || '').replace(/\s+/g, ' ').trim() === (m.text || '').replace(/\s+/g, ' ').trim() &&
+      lastText === nextText &&
+      attKey(last.attachmentUrl) === attKey(m.attachmentUrl) &&
       Math.abs(new Date(last.sentAt).getTime() - new Date(m.sentAt).getTime()) < 12_000
-    ) {
+    if (sameEcho) {
       if ((m.fbMessageId && !last.fbMessageId) || (m.status === 'sent' && last.status === 'pending')) {
         out[out.length - 1] = m
       }

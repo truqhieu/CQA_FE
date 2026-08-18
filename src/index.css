@@ -267,3 +267,41 @@ input[type='number']::-webkit-outer-spin-button {
 input[type='number'] {
   -moz-appearance: textfield;
 }
+
+@keyframes ai-face-blink {
+  0%,
+  86%,
+  100% {
+    transform: scaleY(1);
+  }
+  90%,
+  94% {
+    transform: scaleY(0.08);
+  }
+}
+
+@keyframes ai-face-glow {
+  0%,
+  100% {
+    opacity: 1;
+    filter: drop-shadow(0 0 0 rgb(99 102 241 / 0.15));
+  }
+  50% {
+    opacity: 0.72;
+    filter: drop-shadow(0 0 5px rgb(99 102 241 / 0.9));
+  }
+}
+
+.ai-face-icon--live {
+  animation: ai-face-glow 1.6s ease-in-out infinite;
+}
+
+.ai-face-icon--live .ai-face-eye {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ai-face-blink 2.6s ease-in-out infinite;
+}
+
+.ai-face-icon--live .ai-face-eye--right {
+  animation-delay: 0.06s;
+}

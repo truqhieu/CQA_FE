@@ -26,6 +26,7 @@ import {
 import { ChatListPanel } from './ChatListPanel'
 import { ChatPanel } from './ChatPanel'
 import { ChatRightSidebar } from './ChatRightSidebar'
+import { InternalAssistantPanel, inboxMessagesForAssistant } from './InternalAssistantPanel'
 import { prefetchInboxViewHistory } from './ConversationViewHistory'
 import { InboxLabelFilterPopover, type InboxLabelFilterValue } from './InboxLabelFilterPopover'
 import { useCskhInboxStream } from './useCskhInboxStream'
@@ -140,6 +141,7 @@ function InboxPageSelectItems({
 
 export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   const [selectedConversation, setSelectedConversation] = useState<CskhInboxConversation | null>(null)
+  const [assistantOpen, setAssistantOpen] = useState(false)
   const [adInsightsSelectGen, setAdInsightsSelectGen] = useState<{ id: string; gen: number } | null>(
     null,
   )
@@ -877,7 +879,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
 
         {/* Chat Area */}
         {selectedConversation ? (
-          <div className="flex-1 flex min-w-0 bg-white">
+          <div className="flex-1 flex min-w-0 bg-white relative">
             <div className="flex-1 flex flex-col min-w-0">
               {/* Mobile back button */}
               <div className="md:hidden p-2.5 border-b border-slate-100 flex items-center gap-2 bg-white">
@@ -899,9 +901,25 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
                   connected={connected}
                   draftText={inputDraft}
                   onDraftApplied={() => setInputDraft('')}
+                  assistantOpen={assistantOpen}
+                  onToggleAssistant={() => setAssistantOpen((open) => !open)}
                 />
               </div>
             </div>
+
+            {assistantOpen && (
+              <div className="absolute inset-y-0 right-0 z-20 flex h-full w-[min(100%,340px)] shadow-xl md:static md:z-auto md:w-auto md:shadow-none">
+                <InternalAssistantPanel
+                  conversation={sidebarConversation ?? selectedConversation}
+                  recentMessages={inboxMessagesForAssistant(messagesCache?.messages)}
+                  onClose={() => setAssistantOpen(false)}
+                  onApplyToChat={(text) => {
+                    setInputDraft(text)
+                    toast.success('Đã chèn gợi ý vào ô chat')
+                  }}
+                />
+              </div>
+            )}
 
             {/* Right Sidebar */}
             <div className="hidden lg:flex shrink-0 h-full min-h-0">

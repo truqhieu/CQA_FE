@@ -35,12 +35,15 @@ export function CskhPageAvatar({
   pictureUrl,
   pageId,
   psid,
+  liveFetch,
   className,
 }: {
   name: string
   pictureUrl?: string | null
   pageId?: string | null
   psid?: string | null
+  /** Gọi Graph khi chưa có URL — chỉ dùng cho hội thoại đang mở, không dùng trên list. */
+  liveFetch?: boolean
   className?: string
 }) {
   const [failed, setFailed] = useState(false)
@@ -48,7 +51,7 @@ export function CskhPageAvatar({
   const letter = (name.charAt(0) || 'P').toUpperCase()
 
   const imgSrc = psid
-    ? cskhCustomerAvatarSrc({ pictureUrl, pageId, psid })
+    ? cskhCustomerAvatarSrc({ pictureUrl, pageId, psid, liveFetch })
     : forcePageFetch && pageId
       ? cskhPageAvatarSrc({ pageId })
       : cskhPageAvatarSrc({ pictureUrl, pageId })
@@ -1177,6 +1180,7 @@ export function ChatThreadHeader({
         pictureUrl={pictureUrl}
         pageId={pageId}
         psid={psid}
+        liveFetch
         className="h-11 w-11 rounded-2xl text-sm shadow-md ring-2 ring-white/80"
       />
       <div className="min-w-0 flex-1">
