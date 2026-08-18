@@ -95,9 +95,13 @@ export default function Header() {
     };
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("refreshToken");
+  const handleLogout = async () => {
+    try {
+      const { apiClient } = await import("@/lib/axios");
+      await apiClient.post("/auth/logout");
+    } catch {
+      /* cookie vẫn bị xóa phía client khi hết phiên */
+    }
     queryClient.clear();
     toast.success("Đăng xuất thành công!");
     navigate("/login");

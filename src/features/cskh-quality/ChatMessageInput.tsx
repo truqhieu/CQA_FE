@@ -4,13 +4,16 @@ import { Textarea } from '@/components/ui/textarea'
 import { Send, Loader2 } from 'lucide-react'
 import { previewInboxTranslate } from './api'
 
-const AUTO_TRANSLATE_KEY = 'cskh.inbox.autoTranslate'
+const ASSIST_TRANSLATE_KEY = 'cskh.inbox.autoTranslate'
 
 type ChatMessageInputProps = {
   conversationId: string
   customerLang?: string | null
   customerLangLabel?: string | null
-  onSend: (text: string, options?: { autoTranslate?: boolean }) => Promise<void> | void
+  onSend: (
+    text: string,
+    options?: { autoTranslate?: boolean; originalText?: string },
+  ) => Promise<void> | void
   onTyping?: () => void
   disabled?: boolean
   placeholder?: string
@@ -31,24 +34,26 @@ export function ChatMessageInput({
 }: ChatMessageInputProps) {
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
-  const [autoTranslate, setAutoTranslate] = useState(() => {
+  const [assistTranslate, setAssistTranslate] = useState(() => {
     try {
-      return localStorage.getItem(AUTO_TRANSLATE_KEY) !== '0'
+      return localStorage.getItem(ASSIST_TRANSLATE_KEY) === '1'
     } catch {
-      return true
+      return false
     }
   })
   const [preview, setPreview] = useState<string>('')
   const [previewLoading, setPreviewLoading] = useState(false)
-  const [previewLangLabel, setPreviewLangLabel] = useState(customerLangLabel || '')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewReqRef = useRef(0)
+  const previewEditedRef = useRef(false)
+  const sendingRef = useRef(false)
 
   useEffect(() => {
     if (draftText) {
       setText(draftText)
+      previewEditedRef.current = false
       onDraftApplied?.()
       setTimeout(() => {
         if (textareaRef.current) {
@@ -60,68 +65,59 @@ export function ChatMessageInput({
     }
   }, [draftText, onDraftApplied])
 
-  const sendingRef = useRef(false)
-
   useEffect(() => {
     try {
-      localStorage.setItem(AUTO_TRANSLATE_KEY, autoTranslate ? '1' : '0')
+      localStorage.setItem(ASSIST_TRANSLATE_KEY, assistTranslate ? '1' : '0')
     } catch {
       /* ignore */
     }
-  }, [autoTranslate])
+  }, [assistTranslate])
 
   useEffect(() => {
     if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
     const trimmed = text.trim()
-    if (!autoTranslate || !trimmed || disabled) {
+    if (!assistTranslate || !trimmed || disabled) {
       setPreview('')
       setPreviewLoading(false)
-      return
-    }
-    if (customerLang === 'vi') {
-      setPreview('')
-      setPreviewLoading(false)
+      previewEditedRef.current = false
       return
     }
 
+    previewEditedRef.current = false
     setPreviewLoading(true)
     const reqId = ++previewReqRef.current
     previewTimerRef.current = setTimeout(async () => {
       try {
-        const res = await previewInboxTranslate(
-          conversationId,
-          trimmed,
-          customerLang || undefined
-        )
+        const res = await previewInboxTranslate(conversationId, trimmed, 'vi')
         if (reqId !== previewReqRef.current) return
-        setPreviewLangLabel(res.customerLangLabel || res.targetLang || '')
-        if (res.sameLanguage || res.translatedText === trimmed) {
-          setPreview('')
-        } else {
-          setPreview(res.translatedText)
-        }
+        const next = (res.translatedText || trimmed).trim()
+        setPreview(next || trimmed)
       } catch {
-        if (reqId === previewReqRef.current) setPreview('')
+        if (reqId === previewReqRef.current) setPreview(trimmed)
       } finally {
         if (reqId === previewReqRef.current) setPreviewLoading(false)
       }
-    }, 450)
+    }, 400)
 
     return () => {
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
     }
-  }, [text, autoTranslate, conversationId, customerLang, disabled])
+  }, [text, assistTranslate, conversationId, disabled])
 
   const handleSend = async () => {
     const trimmed = text.trim()
     if (!trimmed || sending || sendingRef.current) return
+    if (assistTranslate && previewLoading) return
+
+    const outbound = assistTranslate && preview.trim() ? preview.trim() : trimmed
 
     sendingRef.current = true
     setSending(true)
     try {
-      await onSend(trimmed, { autoTranslate })
+      await onSend(outbound, { autoTranslate: false })
       setText('')
       setPreview('')
+      previewEditedRef.current = false
       textareaRef.current?.focus()
     } finally {
       sendingRef.current = false
@@ -132,7 +128,7 @@ export function ChatMessageInput({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSend()
+      void handleSend()
     }
   }
 
@@ -152,23 +148,29 @@ export function ChatMessageInput({
     }
   }, [text])
 
-  const langHint = customerLangLabel || customerLang || 'ngôn ngữ khách'
-
   return (
     <div className="border-t border-slate-100 bg-white">
-      {autoTranslate && (preview || previewLoading) && text.trim() && (
+      {assistTranslate && text.trim() && (
         <div className="px-3.5 pt-2.5">
-          <div className="rounded-lg border border-slate-200/80 bg-slate-50/80 px-3 py-2 text-[12px] text-slate-600">
-            <div className="mb-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">
-              Gửi đi ({langHint})
+          <div className="rounded-lg border border-indigo-200/80 bg-indigo-50/60 px-3 py-2">
+            <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-wide text-indigo-500">
+              Bản dịch (Tiếng Việt) — kiểm tra rồi gửi
             </div>
             {previewLoading && !preview ? (
-              <div className="flex items-center gap-1.5 text-slate-400">
+              <div className="flex items-center gap-1.5 text-[12px] text-slate-400">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 Đang dịch…
               </div>
             ) : (
-              <div className="leading-relaxed whitespace-pre-wrap">{preview}</div>
+              <textarea
+                value={preview}
+                onChange={(e) => {
+                  previewEditedRef.current = true
+                  setPreview(e.target.value)
+                }}
+                rows={2}
+                className="w-full resize-none rounded-md border border-indigo-100 bg-white px-2 py-1.5 text-[12.5px] leading-relaxed text-slate-700 outline-none focus:border-indigo-300 focus:ring-1 focus:ring-indigo-200"
+              />
             )}
           </div>
         </div>
@@ -179,14 +181,14 @@ export function ChatMessageInput({
           <input
             type="checkbox"
             className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-200"
-            checked={autoTranslate}
-            onChange={(e) => setAutoTranslate(e.target.checked)}
+            checked={assistTranslate}
+            onChange={(e) => setAssistTranslate(e.target.checked)}
             disabled={disabled || sending}
           />
-          AI Tự dịch khi gửi
+          AI hỗ trợ dịch
         </label>
-        {customerLang && customerLang !== 'vi' && (
-          <span className="text-[10.5px] text-slate-400">→ {langHint}</span>
+        {assistTranslate && (
+          <span className="text-[10.5px] text-slate-400">Xem bản dịch rồi mới gửi</span>
         )}
       </div>
 
@@ -202,8 +204,8 @@ export function ChatMessageInput({
           className="resize-none py-2.5 px-4 text-[12.5px] text-slate-700 border border-slate-200/60 bg-slate-50/20 focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-indigo-100 focus-visible:border-indigo-300 rounded-xl transition-all duration-200 placeholder:text-slate-400 min-h-[38px] max-h-[120px]"
         />
         <Button
-          onClick={handleSend}
-          disabled={!text.trim() || sending || disabled}
+          onClick={() => void handleSend()}
+          disabled={!text.trim() || sending || disabled || (assistTranslate && previewLoading)}
           size="sm"
           className="self-end h-[38px] bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 active:scale-[0.98] transition-all duration-200 text-white rounded-xl shadow-sm shadow-blue-200/40 px-4 cursor-pointer font-semibold"
         >

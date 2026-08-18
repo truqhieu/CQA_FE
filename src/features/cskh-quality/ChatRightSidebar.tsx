@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { Copy, Check, Sparkles, User, Megaphone, MessageSquare, Zap, Loader2, RefreshCw, ShoppingCart } from 'lucide-react'
 import { toast } from 'sonner'
 import type { CskhInboxConversation, CskhCustomerIntent, CskhAdInsights } from './api'
-import { cskhMediaProxySrc } from './messageMedia'
+import { CskhPageAvatar } from './cskhUi'
 import { SapoCreateOrderDialog } from './SapoCreateOrderDialog'
 import { cn } from '@/lib/utils'
 
@@ -136,17 +136,14 @@ export function ChatRightSidebar({
       <div className="flex-1 overflow-y-auto min-h-0">
       {/* Customer Profile */}
       <div className="px-5 pt-5 pb-4 flex flex-col items-center text-center">
-        {conversation.customerPictureUrl ? (
-          <img
-            src={cskhMediaProxySrc(conversation.customerPictureUrl)}
-            alt={conversation.customerName || 'Customer'}
-            className="w-14 h-14 rounded-full object-cover ring-3 ring-white shadow-lg mb-3"
-          />
-        ) : (
-          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-indigo-400 to-violet-600 flex items-center justify-center text-white text-lg font-bold shadow-lg ring-3 ring-white mb-3">
-            {(conversation.customerName || 'K').charAt(0).toUpperCase()}
-          </div>
-        )}
+        <CskhPageAvatar
+          name={conversation.customerName || 'K'}
+          pictureUrl={conversation.customerPictureUrl}
+          pageId={conversation.pageId}
+          psid={conversation.participantPsid}
+          liveFetch
+          className="mb-3 h-14 w-14 rounded-full text-lg shadow-lg ring-3 ring-white"
+        />
         <h3 className="text-sm font-bold text-slate-800 truncate max-w-full">
           {conversation.customerName || 'Khách hàng Messenger'}
         </h3>

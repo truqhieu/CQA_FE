@@ -147,13 +147,14 @@ export function cskhPageAvatarSrc(input: {
   return undefined
 }
 
-/** Avatar khách — ưu tiên URL đã lưu, fallback fetch trực tiếp từ Graph qua BE. */
+/** Avatar khách — ưu tiên URL đã lưu. Chỉ live-fetch Graph khi `liveFetch` (hội thoại đang mở). */
 export function cskhCustomerAvatarSrc(input: {
   pictureUrl?: string | null
   pageId?: string | null
   psid?: string | null
+  liveFetch?: boolean
 }): string | undefined {
-  const { pictureUrl, pageId, psid } = input
+  const { pictureUrl, pageId, psid, liveFetch } = input
   if (pictureUrl?.startsWith('http')) {
     if (/fbcdn|fbsbx|facebook\.com|fb\.com/i.test(pictureUrl)) {
       const base = (import.meta.env.VITE_API_URL || 'http://localhost:3003').replace(/\/$/, '')
@@ -161,7 +162,7 @@ export function cskhCustomerAvatarSrc(input: {
     }
     return pictureUrl
   }
-  if (pageId && psid) {
+  if (liveFetch && pageId && psid) {
     const base = (import.meta.env.VITE_API_URL || 'http://localhost:3003').replace(/\/$/, '')
     return `${base}/cskh/media/customer-avatar?pageId=${encodeURIComponent(pageId)}&psid=${encodeURIComponent(psid)}`
   }

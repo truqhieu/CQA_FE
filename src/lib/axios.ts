@@ -1,7 +1,9 @@
 import axios from 'axios';
-import { restoreAuthAfterOAuth } from './authSession';
 
 const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
+
+const CSRF_COOKIE = 'cqacrm_csrf';
+const CSRF_HEADER = 'X-CSRF-Token';
 
 export const apiClient = axios.create({
   baseURL,
@@ -9,44 +11,99 @@ export const apiClient = axios.create({
   withCredentials: true,
 });
 
-apiClient.interceptors.request.use(
-  (config) => {
-    restoreAuthAfterOAuth();
-    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('authToken') : null;
-    if (token && token !== 'undefined' && token !== 'null') {
-      config.headers.Authorization = `Bearer ${token}`;
+function clearLegacyTokenStorage(): void {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('refreshToken');
+}
+
+clearLegacyTokenStorage();
+
+function readCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(
+    new RegExp(`(?:^|; )${name.replace(/[$()*+.?[\\\]^{|}]/g, '\\$&')}=([^;]*)`),
+  );
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+let csrfMemory: string | null = null;
+let csrfFetchInFlight: Promise<string | null> | null = null;
+
+function isCsrfRequest(url?: string): boolean {
+  return !!url && url.includes('/auth/csrf');
+}
+
+function isAuthLoginRequest(url?: string): boolean {
+  return !!url && url.includes('/auth/login');
+}
+
+function isAuthRegisterRequest(url?: string): boolean {
+  return !!url && url.includes('/auth/register');
+}
+
+function isAuthRefreshRequest(url?: string): boolean {
+  return !!url && url.includes('/auth/refresh');
+}
+
+function isAuthLogoutRequest(url?: string): boolean {
+  return !!url && url.includes('/auth/logout');
+}
+
+function captureCsrfFromBody(data: unknown): void {
+  const token = (data as { data?: { csrfToken?: string } } | undefined)?.data?.csrfToken;
+  if (typeof token === 'string' && token.length > 0) {
+    csrfMemory = token;
+  }
+}
+
+async function fetchCsrfToken(): Promise<string | null> {
+  if (csrfFetchInFlight) return csrfFetchInFlight;
+  csrfFetchInFlight = (async () => {
+    try {
+      const res = await axios.get(`${baseURL}/auth/csrf`, { withCredentials: true });
+      captureCsrfFromBody(res.data);
+      return csrfMemory;
+    } catch {
+      return csrfMemory;
+    } finally {
+      csrfFetchInFlight = null;
     }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+  })();
+  return csrfFetchInFlight;
+}
 
-let refreshInFlight: Promise<string | null> | null = null;
+async function resolveCsrfToken(): Promise<string | null> {
+  const fromCookie = readCookie(CSRF_COOKIE);
+  if (fromCookie) {
+    csrfMemory = fromCookie;
+    return fromCookie;
+  }
+  if (csrfMemory) return csrfMemory;
+  return fetchCsrfToken();
+}
 
-async function refreshAccessToken(): Promise<string | null> {
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function refreshAccessToken(): Promise<boolean> {
   if (refreshInFlight) return refreshInFlight;
 
   refreshInFlight = (async () => {
-    const refreshToken =
-      typeof localStorage !== 'undefined' ? localStorage.getItem('refreshToken') : null;
-    if (!refreshToken || refreshToken === 'undefined' || refreshToken === 'null') return null;
-
     try {
-      const { data } = await axios.post(
+      const csrf = await resolveCsrfToken();
+      const res = await axios.post(
         `${baseURL}/auth/refresh`,
-        { refreshToken },
-        { withCredentials: true },
+        {},
+        {
+          withCredentials: true,
+          headers: csrf ? { [CSRF_HEADER]: csrf } : undefined,
+        },
       );
-      const newAccess = data?.data?.accessToken as string | undefined;
-      const newRefresh = data?.data?.refreshToken as string | undefined;
-      if (!newAccess) return null;
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('authToken', newAccess);
-        if (newRefresh) localStorage.setItem('refreshToken', newRefresh);
-      }
-      return newAccess;
+      captureCsrfFromBody(res.data);
+      return true;
     } catch {
-      return null;
+      csrfMemory = null;
+      return false;
     } finally {
       refreshInFlight = null;
     }
@@ -56,37 +113,54 @@ async function refreshAccessToken(): Promise<string | null> {
 }
 
 function clearAuthAndRedirectLogin(): void {
-  if (typeof localStorage !== 'undefined') {
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('refreshToken');
-  }
+  clearLegacyTokenStorage();
+  csrfMemory = null;
   if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
     window.location.assign('/login');
   }
 }
 
-function isAuthLoginRequest(url?: string): boolean {
-  if (!url) return false;
-  return url.includes('/auth/login');
-}
+apiClient.interceptors.request.use(async (config) => {
+  const method = (config.method || 'get').toUpperCase();
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+    return config;
+  }
+  if (
+    isCsrfRequest(config.url) ||
+    isAuthLoginRequest(config.url) ||
+    isAuthRegisterRequest(config.url)
+  ) {
+    return config;
+  }
+
+  const csrf = await resolveCsrfToken();
+  if (csrf) {
+    config.headers = config.headers || {};
+    config.headers[CSRF_HEADER] = csrf;
+  }
+  return config;
+});
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    captureCsrfFromBody(response.data);
+    if (isAuthLogoutRequest(response.config?.url)) {
+      csrfMemory = null;
+    }
+    return response;
+  },
   async (error) => {
     const status = error.response?.status;
     const original = error.config as (typeof error.config & { _retried?: boolean }) | undefined;
 
-    // Sai TK/MK trả 401 — không refresh / không đá lại /login
     if (status === 401 && isAuthLoginRequest(original?.url)) {
       return Promise.reject(error);
     }
 
-    if (status === 401 && original && !original._retried) {
+    if (status === 401 && original && !original._retried && !isAuthRefreshRequest(original.url)) {
       original._retried = true;
-      const newToken = await refreshAccessToken();
-      if (newToken) {
-        original.headers = original.headers ?? {};
-        original.headers.Authorization = `Bearer ${newToken}`;
+      const ok = await refreshAccessToken();
+      if (ok) {
         return apiClient(original);
       }
     }
@@ -95,7 +169,7 @@ apiClient.interceptors.response.use(
       clearAuthAndRedirectLogin();
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 export function getApiErrorMessage(error: any): string {
@@ -112,6 +186,9 @@ export function getApiErrorMessage(error: any): string {
     const data = error.response?.data;
     const msg = data?.message;
     if (Array.isArray(msg)) return msg.join(', ');
+    if (typeof msg === 'string' && /csrf/i.test(msg)) {
+      return 'Phiên bảo mật hết hạn. Tải lại trang rồi đăng nhập lại.';
+    }
     if (typeof msg === 'string' && msg.trim()) return msg;
     if (error.response.status === 401) return 'Tài khoản hoặc mật khẩu không đúng';
     if (error.response.status === 403) return 'Bạn không có quyền truy cập';

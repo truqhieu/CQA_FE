@@ -1219,11 +1219,15 @@ export async function resolveInboxMessageMedia(messageId: string): Promise<{
 export async function sendInboxMessage(
   conversationId: string,
   text: string,
-  options?: { autoTranslate?: boolean }
+  options?: { autoTranslate?: boolean; originalText?: string }
 ): Promise<CskhInboxMessage> {
   const { data } = await apiClient.post<CskhInboxMessage>(
     `/cskh/inbox/conversations/${conversationId}/send`,
-    { text, autoTranslate: Boolean(options?.autoTranslate) }
+    {
+      text,
+      autoTranslate: Boolean(options?.autoTranslate),
+      originalText: options?.originalText || undefined,
+    }
   )
   return data
 }
@@ -1244,6 +1248,15 @@ export async function previewInboxTranslate(
   const { data } = await apiClient.post(
     `/cskh/inbox/conversations/${conversationId}/translate-preview`,
     { text, targetLang }
+  )
+  return data
+}
+
+export async function translateInboxConversation(
+  conversationId: string
+): Promise<{ translated: number; total: number }> {
+  const { data } = await apiClient.post<{ translated: number; total: number }>(
+    `/cskh/inbox/conversations/${conversationId}/translate`
   )
   return data
 }
@@ -1366,5 +1379,36 @@ export async function fetchInboxAuditHint(conversationId: string): Promise<CskhA
   const { data } = await apiClient.get<CskhAuditRow | null>(
     `/cskh/inbox/conversations/${conversationId}/audit-hint`
   )
+  return data
+}
+
+export type AssistantChatHistoryItem = { role: 'user' | 'assistant'; content: string }
+
+export type AssistantSource = { title?: string; snippet?: string }
+
+export type AssistantChatResponse = {
+  reply: string
+  blocked: boolean
+  blockReason?: string | null
+  sources?: AssistantSource[]
+  scope?: string
+}
+
+export async function chatInternalAssistant(payload: {
+  message: string
+  history?: AssistantChatHistoryItem[]
+  conversationContext?: {
+    conversationId?: string
+    customerName?: string | null
+    platform?: string
+    pageName?: string | null
+    fromAd?: boolean
+    labels?: string[]
+    recentMessages?: { sender: string; text: string }[]
+  }
+}): Promise<AssistantChatResponse> {
+  const { data } = await apiClient.post<AssistantChatResponse>('/ai/assistant/chat', payload, {
+    timeout: 95_000,
+  })
   return data
 }
