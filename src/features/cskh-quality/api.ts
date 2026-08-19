@@ -353,6 +353,55 @@ export async function fetchOmsLocations(): Promise<OmsOption[]> {
   return data
 }
 
+export interface OmsCatalogItem {
+  productId: string
+  variantId: string
+  name: string
+  variantTitle: string
+  sku: string | null
+  price: number
+  priceLabel: string
+  imageUrl: string | null
+  inStock: boolean
+  inventoryQuantity: number
+  locationId: string
+}
+
+export async function fetchOmsCatalog(q?: string): Promise<{
+  ready: boolean
+  items: OmsCatalogItem[]
+  total: number
+}> {
+  const { data } = await apiClient.get<{ ready: boolean; items: OmsCatalogItem[]; total: number }>(
+    '/cskh/oms/catalog',
+    { params: q?.trim() ? { q: q.trim() } : undefined },
+  )
+  return data
+}
+
+export interface CreateOmsOrderPayload {
+  customerName: string
+  phone?: string
+  address?: string
+  note?: string
+  conversationId?: string
+  platform?: string
+  locationId?: string
+  lineItems: Array<{ variantId: string; quantity: number; locationId?: string }>
+}
+
+export interface CreateOmsOrderResult {
+  orderId: string
+  orderName: string | null
+  totalPrice: string | null
+  source: 'oms'
+}
+
+export async function createOmsOrder(payload: CreateOmsOrderPayload): Promise<CreateOmsOrderResult> {
+  const { data } = await apiClient.post<CreateOmsOrderResult>('/cskh/oms/orders', payload)
+  return data
+}
+
 export interface ProductOperationsDashboard {
   month: string
   kpis: {

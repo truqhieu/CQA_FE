@@ -3,7 +3,7 @@ import { Copy, Check, Sparkles, User, Megaphone, MessageSquare, Zap, Loader2, Re
 import { toast } from 'sonner'
 import type { CskhInboxConversation, CskhCustomerIntent, CskhAdInsights } from './api'
 import { CskhPageAvatar } from './cskhUi'
-import { SapoCreateOrderDialog } from './SapoCreateOrderDialog'
+import { OmsCreateOrderDialog } from './OmsCreateOrderDialog'
 import { cn } from '@/lib/utils'
 
 type ChatRightSidebarProps = {
@@ -585,11 +585,10 @@ export function ChatRightSidebar({
       </div>
       </div>
 
-      <SapoCreateOrderDialog
+      <OmsCreateOrderDialog
         open={sapoOrderOpen}
         onClose={() => setSapoOrderOpen(false)}
         conversation={conversation}
-        intent={intent}
       />
     </div>
   )
