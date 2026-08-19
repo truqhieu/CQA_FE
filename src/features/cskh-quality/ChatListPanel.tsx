@@ -206,7 +206,7 @@ const ConversationRow = memo(function ConversationRow({
                   </span>
                 </span>
               ) : (
-                {conv.lastMessage?.trim() || '[Không có tin nhắn]'}
+                conv.lastMessage?.trim() || '[Không có tin nhắn]'
               )}
             </div>
             {hasUnread && (
