@@ -220,7 +220,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
       inboxPlatformReady
         ? fetchInboxConversationStats({ pageId: selectedPageId, platform: graphPlatform })
         : Promise.resolve(EMPTY_STATS),
-    staleTime: 30_000,
+    staleTime: 90_000,
   })
 
   const { data: inboxLabels } = useQuery({
@@ -312,6 +312,12 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
     staleTime: 60_000,
     refetchOnWindowFocus: true,
     refetchInterval: false,
+    retry: (failureCount, err) => {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 503) return failureCount < 2
+      return failureCount < 1
+    },
+    retryDelay: (n) => Math.min(1500 * (n + 1), 4000),
   })
 
   const isRefreshingList = isFetching && !isFetchingNextPage && !isLoadingConversations
@@ -364,11 +370,12 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   }, [qc, listQueryKey, conversationFetchOpts, debouncedSearch, inboxPlatformReady])
 
   useEffect(() => {
+    if (connected) return
     const id = window.setInterval(() => {
       scheduleListHeadRefresh()
-    }, 3_000)
+    }, 15_000)
     return () => window.clearInterval(id)
-  }, [scheduleListHeadRefresh])
+  }, [scheduleListHeadRefresh, connected])
 
   const handleRealtimeMessage = useCallback(
     (conversationId: string) => {
@@ -446,9 +453,10 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
     !listError
 
   useEffect(() => {
-    if (listError) {
-      toast.error(getApiErrorMessage(listErr) || 'Lỗi tải hội thoại')
-    }
+    if (!listError) return
+    const status = (listErr as { response?: { status?: number } })?.response?.status
+    if (status === 503) return
+    toast.error(getApiErrorMessage(listErr) || 'Lỗi tải hội thoại')
   }, [listError, listErr])
 
   // BE tự chạy ad-backfill khi tải danh sách — không gọi thêm từ FE (tránh tranh pool DB).

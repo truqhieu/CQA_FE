@@ -34,7 +34,7 @@ function scheduleConversationStatsRefresh(qc: QueryClient) {
   statsRefreshTimer = setTimeout(() => {
     statsRefreshTimer = null
     void qc.invalidateQueries({ queryKey: ['cskh', 'inbox', 'conversation-stats'] })
-  }, 8_000)
+  }, 20_000)
 }
 
 /**
