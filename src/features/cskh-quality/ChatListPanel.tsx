@@ -25,7 +25,7 @@ type ChatListPanelProps = {
   manualLoadMore?: boolean
 }
 
-const ROW_HEIGHT = 108
+const ROW_HEIGHT = 124
 const LOAD_MORE_ROW_HEIGHT = 52
 
 function formatTime(isoString: string | null): string {
@@ -49,6 +49,11 @@ function formatTime(isoString: string | null): string {
   return date.toLocaleDateString('vi-VN')
 }
 
+/** Khách đang chờ (chưa đọc hoặc chưa trả lời / chưa gán nhãn). */
+function isCustomerWaiting(conv: CskhInboxConversation): boolean {
+  return conv.unreadCount > 0 || Boolean(conv.awaitingLabel)
+}
+
 /** Khách đã nhắn, sale chưa trả — thời gian chờ nhìn thấy ngay trên list. */
 function customerWaitInfo(conv: CskhInboxConversation): {
   label: string
@@ -67,6 +72,17 @@ function customerWaitInfo(conv: CskhInboxConversation): {
   else label = `Chưa TL · ${days}n`
   const tone = mins >= 30 ? 'red' : mins >= 5 ? 'orange' : 'amber'
   return { label, tone }
+}
+
+function pendingViewerLine(conv: CskhInboxConversation): string | null {
+  if (!conv.awaitingLabel || conv.unreadCount > 0) return null
+  const n =
+    conv.pendingViewerCount ??
+    conv.viewers?.filter((v) => !v.hasChot).length ??
+    0
+  if (n <= 0) return 'Đã xem · chưa chốt'
+  if (n === 1) return '1 người đã xem · chưa chốt'
+  return `${n} người đã xem · chưa chốt`
 }
 
 type ConversationRowProps = {
@@ -89,9 +105,10 @@ const ConversationRow = memo(function ConversationRow({
   onPrefetch,
 }: ConversationRowProps) {
   const hasUnread = !isSelected && conv.unreadCount > 0
-  const needsLabel = !isSelected && !!conv.awaitingLabel && conv.unreadCount <= 0
+  const waiting = !isSelected && isCustomerWaiting(conv)
   const unreadBadge = Math.min(conv.unreadCount, 99)
-  const wait = customerWaitInfo(conv)
+  const wait = !isSelected ? customerWaitInfo(conv) : null
+  const viewerLine = pendingViewerLine(conv)
 
   return (
     <button
@@ -103,7 +120,7 @@ const ConversationRow = memo(function ConversationRow({
           ? 'bg-emerald-50/90 border-emerald-300/80 shadow-md shadow-emerald-100/50 scale-[1.01]'
           : isSelected
           ? 'bg-gradient-to-r from-indigo-50/70 to-indigo-50/30 border-indigo-100/70 shadow-sm shadow-indigo-100/20'
-          : hasUnread || needsLabel
+          : waiting
             ? 'bg-slate-50/40 hover:bg-slate-50 border-slate-200/20'
             : 'bg-white hover:bg-slate-50 border-transparent',
       )}
@@ -120,11 +137,8 @@ const ConversationRow = memo(function ConversationRow({
             psid={conv.participantPsid}
             className="h-10 w-10 rounded-full border border-slate-200 text-xs shadow-sm"
           />
-          {hasUnread && (
+          {waiting && (
             <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-orange-500 rounded-full border-2 border-white" />
-          )}
-          {needsLabel && (
-            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-amber-400 rounded-full border-2 border-white" />
           )}
         </div>
 
@@ -134,7 +148,7 @@ const ConversationRow = memo(function ConversationRow({
               <h3
                 className={cn(
                   'text-[12.5px] truncate leading-tight',
-                  hasUnread ? 'font-bold text-slate-900' : 'font-semibold text-slate-700',
+                  hasUnread || waiting ? 'font-bold text-slate-900' : 'font-semibold text-slate-700',
                 )}
               >
                 {conv.customerName || `Khách ${(conv.participantPsid ?? '').slice(0, 8) || '?'}`}
@@ -187,7 +201,7 @@ const ConversationRow = memo(function ConversationRow({
                 'text-[11px] truncate flex-1 min-h-[14px] leading-snug',
                 isTyping
                   ? 'text-blue-600 font-medium italic'
-                  : hasUnread
+                  : waiting
                     ? 'text-slate-700 font-medium'
                     : 'text-slate-500',
               )}
@@ -214,15 +228,16 @@ const ConversationRow = memo(function ConversationRow({
                 {unreadBadge}
               </span>
             )}
-            {needsLabel && (
-              <span
-                className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[9px] font-bold text-white bg-amber-500 rounded-full shrink-0 shadow-sm"
-                title="Chờ gán nhãn"
-              >
-                !
-              </span>
-            )}
           </div>
+
+          {viewerLine && (
+            <p
+              className="mt-1 text-[10px] font-semibold text-amber-700 truncate"
+              title="Mở hội thoại để xem những ai đã xem nhưng chưa chốt"
+            >
+              {viewerLine}
+            </p>
+          )}
 
                 <div className="flex items-center gap-1 mt-1.5 flex-wrap">
                   {(conv.labels?.length ?? 0) > 0 && (

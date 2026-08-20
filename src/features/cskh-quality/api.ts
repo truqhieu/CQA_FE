@@ -1019,6 +1019,7 @@ export interface CskhInboxConversation {
   lastMessageAt: string | null
   unreadCount: number
   awaitingLabel?: boolean
+  pendingViewerCount?: number
   updatedAt: string
   customerLang?: string | null
   customerLangLabel?: string | null

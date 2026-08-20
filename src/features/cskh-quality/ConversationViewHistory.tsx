@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { History, Loader2, UserX } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -57,6 +57,10 @@ type ConversationViewHistoryProps = {
   /** Số NV mở nhưng chưa chốt — badge trên icon (từ cache, có thể thiếu). */
   pendingCount?: number
   className?: string
+  /** Mở sẵn danh sách khi quản lý vào hội thoại đã xem chưa chốt. */
+  autoOpen?: boolean
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 export function prefetchInboxViewHistory(
@@ -83,9 +87,22 @@ export function ConversationViewHistory({
   conversationId,
   pendingCount = 0,
   className,
+  autoOpen = false,
+  open: openProp,
+  onOpenChange,
 }: ConversationViewHistoryProps) {
-  const [open, setOpen] = useState(false)
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
   const qc = useQueryClient()
+  const isControlled = openProp !== undefined
+  const open = isControlled ? openProp : uncontrolledOpen
+  const setOpen = (next: boolean) => {
+    if (!isControlled) setUncontrolledOpen(next)
+    onOpenChange?.(next)
+  }
+
+  useEffect(() => {
+    if (!isControlled && autoOpen) setUncontrolledOpen(true)
+  }, [conversationId, autoOpen, isControlled])
 
   const { data, isLoading } = useQuery({
     queryKey: ['cskh', 'inbox', 'view-history', conversationId],

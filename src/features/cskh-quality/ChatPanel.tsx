@@ -53,6 +53,7 @@ export function ChatPanel({
   const loadingOlderRef = useRef(false)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [hasMoreOlder, setHasMoreOlder] = useState(true)
+  const [viewHistoryOpen, setViewHistoryOpen] = useState(false)
 
   if (lastConversationIdRef.current !== conversation.id) {
     lastConversationIdRef.current = conversation.id
@@ -62,7 +63,8 @@ export function ChatPanel({
 
   useEffect(() => {
     setHasMoreOlder(true)
-  }, [conversation.id])
+    setViewHistoryOpen(Boolean(conversation.awaitingLabel))
+  }, [conversation.id, conversation.awaitingLabel])
   const qc = useQueryClient()
 
   const markUnreadMutation = useMutation({
@@ -117,7 +119,10 @@ export function ChatPanel({
     return rawMessages.filter((m) => !isInboxMessagePreview(m.id))
   }, [rawMessages, hasRealMessages])
 
-  const conversationWithLabels = messagesData?.conversation ?? conversation
+  const conversationWithLabels = {
+    ...conversation,
+    ...(messagesData?.conversation ?? {}),
+  }
   const showInitialLoader =
     !hasRealMessages && (!isFetched || isLoading || isPending || isFetching)
   const showHydratingHint = isFetching && hasRealMessages
@@ -413,8 +418,13 @@ export function ChatPanel({
           <ConversationViewHistory
             conversationId={conversation.id}
             pendingCount={
-              conversationWithLabels.viewers?.filter((v) => !v.hasChot).length ?? 0
+              conversationWithLabels.pendingViewerCount ??
+              conversationWithLabels.viewers?.filter((v) => !v.hasChot).length ??
+              0
             }
+            autoOpen={Boolean(conversationWithLabels.awaitingLabel)}
+            open={viewHistoryOpen}
+            onOpenChange={setViewHistoryOpen}
           />
           <button
             type="button"
@@ -449,6 +459,18 @@ export function ChatPanel({
           )}
         </div>
       </div>
+
+      {conversationWithLabels.awaitingLabel && (
+        <button
+          type="button"
+          onClick={() => setViewHistoryOpen(true)}
+          className="w-full shrink-0 px-4 py-1.5 text-left text-[11px] font-semibold text-amber-800 bg-amber-50 border-b border-amber-100 hover:bg-amber-100/80 transition-colors cursor-pointer"
+        >
+          {(conversationWithLabels.pendingViewerCount ?? 0) > 0
+            ? `${conversationWithLabels.pendingViewerCount} người đã xem nhưng chưa chốt — nhấn để xem ai`
+            : 'Đã xem nhưng chưa chốt — nhấn để xem ai đã mở hội thoại'}
+        </button>
+      )}
 
       {/* Messages Area */}
       <div
