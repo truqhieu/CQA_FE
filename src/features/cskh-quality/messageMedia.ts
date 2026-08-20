@@ -109,6 +109,12 @@ export function resolveMessageMedia(input: {
   return { displayText, attachmentUrl, messageType }
 }
 
+/** Số ảnh trong preview danh sách — `[4 ảnh]`. */
+export function parseInboxPhotoPreviewCount(preview?: string | null): number {
+  const m = /^\[(\d+)\s+ảnh\]$/i.exec((preview ?? '').trim())
+  return m ? Number(m[1]) : 0
+}
+
 /** Proxy media Facebook CDN qua BE (fallback khi load trực tiếp thất bại). */
 export function cskhMediaProxySrc(mediaUrl?: string | null): string | undefined {
   if (!mediaUrl?.startsWith('http')) return undefined

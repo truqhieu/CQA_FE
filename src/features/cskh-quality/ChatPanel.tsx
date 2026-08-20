@@ -22,6 +22,7 @@ import { TypingIndicator } from './TypingIndicator'
 import { CskhPageAvatar } from './cskhUi'
 import { AiFaceIcon } from './AiFaceIcon'
 import { appendInboxMessagesToCache, patchInboxConversationInCache, isInboxMessagePreview, collapseInboxMessageList } from './inboxRealtimeCache'
+import { parseInboxPhotoPreviewCount } from './messageMedia'
 
 type ChatPanelProps = {
   conversation: CskhInboxConversation
@@ -478,8 +479,17 @@ export function ChatPanel({
                 <Loader2 className="w-4 h-4 animate-spin text-indigo-300" />
               </div>
             )}
-            {displayMessages.map((msg) => (
-              <ChatMessage key={msg.id} message={msg} isOwn={msg.isOwn} />
+            {displayMessages.map((msg, idx) => (
+              <ChatMessage
+                key={msg.id}
+                message={msg}
+                isOwn={msg.isOwn}
+                expectMinImages={
+                  idx === displayMessages.length - 1
+                    ? parseInboxPhotoPreviewCount(conversation.lastMessage)
+                    : 0
+                }
+              />
             ))}
             {isCustomerTyping && <TypingIndicator />}
           </>

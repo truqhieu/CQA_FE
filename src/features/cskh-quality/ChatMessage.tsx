@@ -1,15 +1,48 @@
 import { Check, CheckCheck, Loader2, AlertCircle } from 'lucide-react'
-import { memo } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
-import type { CskhInboxMessage } from './api'
-import { cskhMediaProxySrc } from './messageMedia'
+import { resolveInboxMessageMedia, type CskhInboxMessage } from './api'
+import { dedupeMediaUrls } from './auditHelpers'
+import { isInboxMessagePreview } from './inboxRealtimeCache'
+import { cskhMediaProxySrc, cskhMediaSrc, resolveMessageMedia } from './messageMedia'
 
 type ChatMessageProps = {
   message: CskhInboxMessage
   isOwn: boolean
+  expectMinImages?: number
 }
 
-export const ChatMessage = memo(function ChatMessage({ message, isOwn }: ChatMessageProps) {
+function ChatMediaImage({ url, compact }: { url: string; compact?: boolean }) {
+  const [failed, setFailed] = useState(false)
+  const [useProxy, setUseProxy] = useState(false)
+  const src = useProxy ? cskhMediaProxySrc(url) : cskhMediaSrc(url)
+  if (failed || !src) return null
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg">
+      <img
+        src={src}
+        alt=""
+        referrerPolicy="no-referrer"
+        className={
+          compact
+            ? 'aspect-square w-full object-cover'
+            : 'max-h-96 max-w-full rounded-lg object-cover'
+        }
+        loading="lazy"
+        onError={() => {
+          if (!useProxy) setUseProxy(true)
+          else setFailed(true)
+        }}
+      />
+    </a>
+  )
+}
+
+export const ChatMessage = memo(function ChatMessage({
+  message,
+  isOwn,
+  expectMinImages = 0,
+}: ChatMessageProps) {
   const statusIcon =
     message.status === 'pending' ? (
       <Loader2 className="w-3 h-3 animate-spin" />
@@ -41,24 +74,77 @@ export const ChatMessage = memo(function ChatMessage({ message, isOwn }: ChatMes
     !bothVietnamese &&
     (message.messageType === 'text' || !message.messageType)
 
+  const initialUrls = dedupeMediaUrls(
+    message.attachmentUrls?.length
+      ? message.attachmentUrls
+      : message.attachmentUrl
+        ? [message.attachmentUrl]
+        : [],
+  )
+  const [resolvedUrls, setResolvedUrls] = useState<string[]>(initialUrls)
+  const [resolvedType, setResolvedType] = useState<string | null>(message.messageType ?? null)
+  const [resolvedText, setResolvedText] = useState<string | null | undefined>(message.text)
+  const [resolving, setResolving] = useState(false)
+  const resolveAttemptedFor = useRef<string | null>(null)
+
+  useEffect(() => {
+    const urls = dedupeMediaUrls(
+      message.attachmentUrls?.length
+        ? message.attachmentUrls
+        : message.attachmentUrl
+          ? [message.attachmentUrl]
+          : [],
+    )
+    setResolvedUrls(urls)
+    setResolvedType(message.messageType ?? null)
+    setResolvedText(message.text)
+  }, [message.id, message.attachmentUrl, message.attachmentUrls, message.messageType, message.text])
+
+  const media = resolveMessageMedia({
+    text: resolvedText,
+    attachmentUrl: resolvedUrls[0] ?? null,
+    messageType: resolvedType,
+  })
+  const expectMin = Math.max(expectMinImages, message.groupedMediaCount ?? 0)
+  const needsResolve =
+    Boolean(message.id) &&
+    !isInboxMessagePreview(message.id) &&
+    (media.messageType === 'image' ||
+      media.messageType === 'video' ||
+      resolvedText === '[Ảnh]' ||
+      resolvedText === '[Video]' ||
+      resolvedText === '[attachment]') &&
+    (resolvedUrls.length === 0 || resolvedUrls.length < expectMin)
+
+  useEffect(() => {
+    if (!needsResolve) return
+    if (resolveAttemptedFor.current === message.id) return
+    resolveAttemptedFor.current = message.id
+    let cancelled = false
+    setResolving(true)
+    resolveInboxMessageMedia(message.id)
+      .then((row) => {
+        if (cancelled) return
+        if (row.attachmentUrls?.length) setResolvedUrls(dedupeMediaUrls(row.attachmentUrls))
+        else if (row.attachmentUrl) setResolvedUrls(dedupeMediaUrls([row.attachmentUrl]))
+        if (row.messageType) setResolvedType(row.messageType)
+        setResolvedText(row.text)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setResolving(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [message.id, needsResolve])
+
+  const imageUrls =
+    media.messageType === 'image' ? resolvedUrls.filter((u) => u.startsWith('http')) : []
+  const videoUrl = media.messageType === 'video' ? (resolvedUrls[0] ?? media.attachmentUrl) : null
+  const caption = media.displayText
+
   const renderContent = () => {
-    if (!message.text && !message.attachmentUrl) {
-      return <p className="text-sm italic text-gray-500">[Tin nhắn không hỗ trợ]</p>
-    }
-
-    if (message.messageType === 'image' || message.messageType === 'video') {
-      return message.attachmentUrl ? (
-        <img
-          src={cskhMediaProxySrc(message.attachmentUrl)}
-          alt="attachment"
-          className="max-w-xs rounded max-h-96 object-cover"
-          loading="lazy"
-        />
-      ) : (
-        <p className="text-sm italic">{message.messageType === 'video' ? '[Video]' : '[Ảnh]'}</p>
-      )
-    }
-
     if (message.messageType === 'sticker') {
       return message.attachmentUrl ? (
         <img
@@ -72,39 +158,75 @@ export const ChatMessage = memo(function ChatMessage({ message, isOwn }: ChatMes
       )
     }
 
+    if (imageUrls.length || videoUrl || caption) {
+      return (
+        <div className="space-y-2">
+          {imageUrls.length > 0 ? (
+            <div
+              className={
+                imageUrls.length > 1
+                  ? 'grid max-w-[240px] grid-cols-2 gap-1'
+                  : 'grid grid-cols-1 gap-1'
+              }
+            >
+              {imageUrls.map((url, idx) => (
+                <ChatMediaImage key={`${url}-${idx}`} url={url} compact={imageUrls.length > 1} />
+              ))}
+            </div>
+          ) : null}
+          {videoUrl ? (
+            <video
+              src={cskhMediaSrc(videoUrl) ?? cskhMediaProxySrc(videoUrl)}
+              controls
+              playsInline
+              preload="metadata"
+              className="max-h-64 max-w-full rounded-lg"
+            />
+          ) : null}
+          {caption ? (
+            <div className="text-sm leading-relaxed break-words space-y-1.5">
+              <div>{caption}</div>
+              {showVi && (
+                <div
+                  className={cn(
+                    'text-[11.5px] leading-snug border-t pt-1.5',
+                    isOwn ? 'border-white/25 text-blue-50/90' : 'border-gray-200 text-slate-500',
+                  )}
+                >
+                  <span className={cn('font-medium', isOwn ? 'text-blue-50' : 'text-slate-600')}>
+                    {isOwn ? 'Tiếng Việt: ' : 'Dịch: '}
+                  </span>
+                  {viText}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )
+    }
+
     return (
-      <div className="text-sm leading-relaxed break-words space-y-1.5">
-        <div>{message.text || <span className="italic text-gray-500">[Tin nhắn trống]</span>}</div>
-        {showVi && (
-          <div
-            className={cn(
-              'text-[11.5px] leading-snug border-t pt-1.5',
-              isOwn ? 'border-white/25 text-blue-50/90' : 'border-gray-200 text-slate-500'
-            )}
-          >
-            <span className={cn('font-medium', isOwn ? 'text-blue-50' : 'text-slate-600')}>
-              {isOwn ? 'Tiếng Việt: ' : 'Dịch: '}
-            </span>
-            {viText}
-          </div>
-        )}
-      </div>
+      <p className={cn('text-sm italic', isOwn ? 'text-blue-100' : 'text-gray-500')}>
+        {resolving
+          ? 'Đang tải ảnh…'
+          : media.messageType === 'video'
+            ? '[Video]'
+            : media.messageType === 'image'
+              ? '[Ảnh]'
+              : '[Tin nhắn không hỗ trợ]'}
+      </p>
     )
   }
 
   return (
-    <div
-      className={cn(
-        'flex mb-3 gap-2',
-        isOwn ? 'justify-end' : 'justify-start'
-      )}
-    >
+    <div className={cn('flex mb-3 gap-2', isOwn ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'max-w-xs px-4 py-2 rounded-lg shadow-md',
+          'px-4 py-2 rounded-lg shadow-md',
+          imageUrls.length > 1 ? 'max-w-sm' : 'max-w-xs',
           isOwn
             ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-br-none shadow-blue-200/50'
-            : 'bg-gray-100 text-gray-900 rounded-bl-none border border-gray-200 shadow-gray-100/50'
+            : 'bg-gray-100 text-gray-900 rounded-bl-none border border-gray-200 shadow-gray-100/50',
         )}
       >
         {renderContent()}
@@ -112,7 +234,7 @@ export const ChatMessage = memo(function ChatMessage({ message, isOwn }: ChatMes
         <div
           className={cn(
             'text-xs mt-1 flex items-center justify-end gap-1',
-            isOwn ? 'text-blue-100' : 'text-gray-500'
+            isOwn ? 'text-blue-100' : 'text-gray-500',
           )}
         >
           <span>{formatTime(message.sentAt)}</span>
