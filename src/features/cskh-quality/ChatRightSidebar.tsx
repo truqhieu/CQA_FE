@@ -589,6 +589,7 @@ export function ChatRightSidebar({
         open={sapoOrderOpen}
         onClose={() => setSapoOrderOpen(false)}
         conversation={conversation}
+        intent={intent}
       />
     </div>
   )

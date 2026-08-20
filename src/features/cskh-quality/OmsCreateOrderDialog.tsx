@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Loader2, Plus, Search, ShoppingCart, X } from 'lucide-react'
 import { toast } from 'sonner'
-import type { CskhInboxConversation, OmsCatalogItem } from './api'
-import { createOmsOrder, fetchOmsCatalog } from './api'
+import type { CskhCustomerIntent, CskhInboxConversation, OmsCatalogItem } from './api'
+import { createOmsOrder, fetchOmsCatalog, fetchOmsOrderSuggest } from './api'
 import { cn } from '@/lib/utils'
 
 type LineItemDraft = {
@@ -16,12 +16,14 @@ type LineItemDraft = {
   quantity: number
   maxQty: number
   locationId: string
+  matchReason?: string
 }
 
 type OmsCreateOrderDialogProps = {
   open: boolean
   onClose: () => void
   conversation: CskhInboxConversation
+  intent?: CskhCustomerIntent | null
 }
 
 function toLineItem(p: OmsCatalogItem, quantity = 1): LineItemDraft {
@@ -35,16 +37,32 @@ function toLineItem(p: OmsCatalogItem, quantity = 1): LineItemDraft {
     quantity,
     maxQty: p.inventoryQuantity,
     locationId: p.locationId,
+    matchReason: p.matchReason,
   }
 }
 
-export function OmsCreateOrderDialog({ open, onClose, conversation }: OmsCreateOrderDialogProps) {
+export function OmsCreateOrderDialog({
+  open,
+  onClose,
+  conversation,
+  intent,
+}: OmsCreateOrderDialogProps) {
   const [phone, setPhone] = useState('')
   const [address, setAddress] = useState('')
   const [note, setNote] = useState('')
   const [productSearch, setProductSearch] = useState('')
   const [debouncedQ, setDebouncedQ] = useState('')
   const [lineItems, setLineItems] = useState<LineItemDraft[]>([])
+  const [suggestNote, setSuggestNote] = useState<string | null>(null)
+  const appliedSuggest = useRef(false)
+
+  const mentions = useMemo(() => {
+    const fromIntent = [
+      ...(intent?.productMentions ?? []),
+      ...(intent?.products ?? []).map((p) => p.sku || p.name),
+    ]
+    return [...new Set(fromIntent.map((s) => s.trim()).filter(Boolean))]
+  }, [intent])
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedQ(productSearch.trim()), 350)
@@ -53,12 +71,14 @@ export function OmsCreateOrderDialog({ open, onClose, conversation }: OmsCreateO
 
   useEffect(() => {
     if (!open) return
+    appliedSuggest.current = false
     setPhone('')
     setAddress('')
     setNote('')
     setProductSearch('')
     setDebouncedQ('')
     setLineItems([])
+    setSuggestNote(null)
   }, [open, conversation.id])
 
   const catalogQ = useQuery({
@@ -67,6 +87,23 @@ export function OmsCreateOrderDialog({ open, onClose, conversation }: OmsCreateO
     enabled: open,
     staleTime: 30_000,
   })
+
+  const suggestQ = useQuery({
+    queryKey: ['cskh', 'oms', 'suggest', conversation.id, mentions.join('|')],
+    queryFn: () => fetchOmsOrderSuggest(conversation.id, mentions),
+    enabled: open,
+    staleTime: 15_000,
+  })
+
+  useEffect(() => {
+    if (!open || !suggestQ.data || appliedSuggest.current) return
+    appliedSuggest.current = true
+    if (suggestQ.data.phone) setPhone((prev) => prev || suggestQ.data!.phone!)
+    if (suggestQ.data.items.length) {
+      setLineItems(suggestQ.data.items.map((p) => toLineItem(p, 1)))
+    }
+    setSuggestNote(suggestQ.data.note)
+  }, [open, suggestQ.data])
 
   const createMutation = useMutation({
     mutationFn: createOmsOrder,
@@ -212,6 +249,17 @@ export function OmsCreateOrderDialog({ open, onClose, conversation }: OmsCreateO
 
           <div className="space-y-2">
             <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Sản phẩm trong đơn</h3>
+            {suggestQ.isFetching && !lineItems.length ? (
+              <p className="text-[11px] text-emerald-700 flex items-center gap-1.5">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Đang quét hội thoại để khớp sản phẩm kho…
+              </p>
+            ) : null}
+            {suggestNote ? (
+              <p className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-lg px-2.5 py-1.5">
+                {suggestNote}
+              </p>
+            ) : null}
             {lineItems.length === 0 ? (
               <p className="text-[11px] text-slate-400 italic py-2">Tìm và chọn sản phẩm từ kho bên dưới.</p>
             ) : (
@@ -232,6 +280,9 @@ export function OmsCreateOrderDialog({ open, onClose, conversation }: OmsCreateO
                       </p>
                       <p className="text-[10px] text-violet-600 font-bold mt-0.5">{item.priceLabel}</p>
                       <p className="text-[9px] text-slate-400">Tồn: {item.maxQty}</p>
+                      {item.matchReason ? (
+                        <p className="text-[9px] text-amber-700 mt-0.5">{item.matchReason}</p>
+                      ) : null}
                     </div>
                     <input
                       type="number"
