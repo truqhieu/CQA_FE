@@ -365,6 +365,7 @@ export interface OmsCatalogItem {
   inStock: boolean
   inventoryQuantity: number
   locationId: string
+  matchReason?: string
 }
 
 export async function fetchOmsCatalog(q?: string): Promise<{
@@ -376,6 +377,29 @@ export async function fetchOmsCatalog(q?: string): Promise<{
     '/cskh/oms/catalog',
     { params: q?.trim() ? { q: q.trim() } : undefined },
   )
+  return data
+}
+
+export async function fetchOmsOrderSuggest(
+  conversationId: string,
+  mentions?: string[],
+): Promise<{
+  items: OmsCatalogItem[]
+  phone: string | null
+  queries: string[]
+  note: string | null
+}> {
+  const { data } = await apiClient.get<{
+    items: OmsCatalogItem[]
+    phone: string | null
+    queries: string[]
+    note: string | null
+  }>('/cskh/oms/suggest', {
+    params: {
+      conversationId,
+      mentions: mentions?.filter(Boolean).join(',') || undefined,
+    },
+  })
   return data
 }
 
