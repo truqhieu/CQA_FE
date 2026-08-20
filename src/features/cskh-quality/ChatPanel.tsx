@@ -106,7 +106,7 @@ export function ChatPanel({
         qc.setQueryData(['cskh', 'inbox', 'messages', conversation.id], partial)
       }),
     staleTime: 120_000,
-    refetchInterval: 3_000,
+    refetchInterval: false,
   })
 
   const rawMessages = messagesData?.messages ?? []

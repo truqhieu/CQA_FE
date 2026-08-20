@@ -514,7 +514,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
       }),
     enabled: !!selectedId,
     staleTime: 120_000,
-    refetchInterval: 3_000,
+    refetchInterval: connected ? false : 20_000,
   })
 
   const sidebarConversation: CskhInboxConversation | null = selectedConversation
