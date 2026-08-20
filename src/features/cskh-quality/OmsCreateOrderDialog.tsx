@@ -57,11 +57,13 @@ export function OmsCreateOrderDialog({
   const appliedSuggest = useRef(false)
 
   const mentions = useMemo(() => {
-    const fromIntent = [
-      ...(intent?.productMentions ?? []),
-      ...(intent?.products ?? []).map((p) => p.sku || p.name),
+    return [
+      ...new Set(
+        (intent?.productMentions ?? [])
+          .map((s) => s.trim())
+          .filter((s) => s.length >= 4 && s.length <= 48 && !/HK\d{4,}/i.test(s) && !/chế tác/i.test(s)),
+      ),
     ]
-    return [...new Set(fromIntent.map((s) => s.trim()).filter(Boolean))]
   }, [intent])
 
   useEffect(() => {
