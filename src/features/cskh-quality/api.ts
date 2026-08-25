@@ -1065,10 +1065,12 @@ export interface CskhInboxConversationPage {
 export async function fetchInboxConversationStats(options?: {
   pageId?: string
   platform?: 'messenger' | 'instagram'
+  month?: string
 }): Promise<CskhInboxConversationStats> {
   const params: Record<string, string> = {}
   if (options?.pageId) params.pageId = options.pageId
   if (options?.platform) params.platform = options.platform
+  if (options?.month) params.month = options.month
   const { data } = await apiClient.get<CskhInboxConversationStats>(
     '/cskh/inbox/conversation-stats',
     { params: Object.keys(params).length ? params : undefined },
@@ -1085,6 +1087,7 @@ export async function fetchInboxConversationsPage(options?: {
   cursor?: string
   search?: string
   sinceDays?: number
+  month?: string
   labelId?: string
   unlabeledOnly?: boolean
   includeLabels?: boolean
@@ -1098,7 +1101,8 @@ export async function fetchInboxConversationsPage(options?: {
   if (options?.limit != null && options.limit > 0) params.limit = String(options.limit)
   if (options?.cursor) params.cursor = options.cursor
   if (options?.search) params.search = options.search
-  if (options?.sinceDays != null && options.sinceDays > 0) {
+  if (options?.month) params.month = options.month
+  else if (options?.sinceDays != null && options.sinceDays > 0) {
     params.sinceDays = String(options.sinceDays)
   }
   if (options?.labelId) params.labelId = options.labelId

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useTransition, useRef } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { InfiniteData } from '@tanstack/react-query'
-import { ArrowLeft, RefreshCw, Search, MessageCircle, Wifi, WifiOff, Inbox } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Search, MessageCircle, Wifi, WifiOff, Inbox, CalendarDays, LayoutGrid } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { getApiErrorMessage } from '@/lib/axios'
@@ -41,6 +41,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/custom-ui/select'
+import {
+  currentInboxMonthKey,
+  formatInboxMonthLabel,
+  inboxMonthOptions,
+} from './inboxMonth'
 
 type ChatMessengerPaneProps = {
   pageId?: string
@@ -49,13 +54,15 @@ type ChatMessengerPaneProps = {
 type FilterTab = 'all' | 'unread' | 'ads' | 'normal'
 type PlatformFilter = 'all' | 'facebook' | 'instagram' | 'threads' | 'youtube'
 
-const PLATFORM_TABS = [
-  { key: 'all' as const, label: 'Tất cả' },
-  { key: 'facebook' as const, label: 'Facebook' },
-  { key: 'instagram' as const, label: 'Instagram' },
-  { key: 'threads' as const, label: 'Threads' },
-  { key: 'youtube' as const, label: 'YouTube' },
+const PLATFORM_TABS: { key: PlatformFilter; label: string }[] = [
+  { key: 'all', label: 'Tất cả' },
+  { key: 'facebook', label: 'Facebook' },
+  { key: 'instagram', label: 'Instagram' },
+  { key: 'threads', label: 'Threads' },
+  { key: 'youtube', label: 'YouTube' },
 ]
+
+const INBOX_MONTH_OPTIONS = inboxMonthOptions(18)
 
 const EMPTY_CONV_PAGE: CskhInboxConversationPage = { items: [], nextCursor: null, hasMore: false }
 const EMPTY_STATS: CskhInboxConversationStats = { total: 0, fromAd: 0, unread: 0, normal: 0 }
@@ -77,13 +84,126 @@ function hasConnectedInbox(filter: PlatformFilter): boolean {
   return filter === 'all' || filter === 'facebook' || filter === 'instagram'
 }
 
-function platformTabClass(on: boolean, key: PlatformFilter): string {
-  if (!on) return 'text-slate-500 hover:text-slate-700'
-  if (key === 'instagram') return 'bg-white text-pink-600 shadow-sm'
-  if (key === 'facebook') return 'bg-white text-blue-600 shadow-sm'
-  if (key === 'youtube') return 'bg-white text-red-600 shadow-sm'
-  if (key === 'threads') return 'bg-white text-slate-900 shadow-sm'
-  return 'bg-white text-slate-800 shadow-sm'
+function PlatformGlyph({ name }: { name: PlatformFilter }) {
+  if (name === 'facebook') {
+    return (
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="currentColor" aria-hidden>
+        <path d="M22 12a10 10 0 10-11.56 9.88v-6.99H8.08V12h2.36V9.8c0-2.33 1.39-3.62 3.52-3.62.99 0 2.03.18 2.03.18v2.23h-1.14c-1.13 0-1.48.7-1.48 1.42V12h2.52l-.4 2.89h-2.12v6.99A10 10 0 0022 12z" />
+      </svg>
+    )
+  }
+  if (name === 'instagram') {
+    return (
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="currentColor" aria-hidden>
+        <path d="M7.75 2h8.5A5.75 5.75 0 0122 7.75v8.5A5.75 5.75 0 0116.25 22h-8.5A5.75 5.75 0 012 16.25v-8.5A5.75 5.75 0 017.75 2zm0 1.8A3.95 3.95 0 003.8 7.75v8.5a3.95 3.95 0 003.95 3.95h8.5a3.95 3.95 0 003.95-3.95v-8.5A3.95 3.95 0 0016.25 3.8h-8.5zM12 7.2A4.8 4.8 0 1112 16.8 4.8 4.8 0 0112 7.2zm0 1.8a3 3 0 100 6 3 3 0 000-6zM17.5 6.1a1.15 1.15 0 110 2.3 1.15 1.15 0 010-2.3z" />
+      </svg>
+    )
+  }
+  if (name === 'youtube') {
+    return (
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="currentColor" aria-hidden>
+        <path d="M23.5 6.2a3.05 3.05 0 00-2.15-2.16C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.35.44A3.05 3.05 0 00.5 6.2 31.9 31.9 0 000 12a31.9 31.9 0 00.5 5.8 3.05 3.05 0 002.15 2.16C4.5 20.4 12 20.4 12 20.4s7.5 0 9.35-.44a3.05 3.05 0 002.15-2.16A31.9 31.9 0 0024 12a31.9 31.9 0 00-.5-5.8zM9.6 15.6V8.4L15.8 12l-6.2 3.6z" />
+      </svg>
+    )
+  }
+  if (name === 'threads') {
+    return (
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="currentColor" aria-hidden>
+        <path d="M16.3 11.2c-.1-2.4-1.5-4-4-4-2.9 0-4.8 2.2-4.8 5.6 0 3.2 1.7 5.4 4.8 5.4 2.2 0 3.8-1.1 4.5-3l-1.8-.6c-.4 1.2-1.4 1.8-2.7 1.8-1.8 0-2.9-1.4-2.9-3.6h7c0-.2.1-.4.1-.6zm-7-1.2c.3-1.5 1.3-2.5 2.8-2.5 1.4 0 2.3.9 2.5 2.5h-5.3zM12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z" />
+      </svg>
+    )
+  }
+  return <LayoutGrid className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} />
+}
+
+function platformPillClass(on: boolean, key: PlatformFilter): string {
+  if (!on) return 'text-slate-500 hover:text-slate-800 hover:bg-white'
+  if (key === 'facebook') return 'bg-[#1877F2] text-white shadow-sm'
+  if (key === 'instagram') return 'bg-gradient-to-tr from-[#f58529] via-[#dd2a7b] to-[#8134af] text-white shadow-sm'
+  if (key === 'youtube') return 'bg-[#FF0000] text-white shadow-sm'
+  if (key === 'threads') return 'bg-slate-900 text-white shadow-sm'
+  return 'bg-slate-800 text-white shadow-sm'
+}
+
+function InboxPlatformPills({
+  value,
+  onChange,
+  compact,
+}: {
+  value: PlatformFilter
+  onChange: (next: PlatformFilter) => void
+  compact?: boolean
+}) {
+  return (
+    <div
+      className={`flex items-center rounded-xl border border-slate-200/80 bg-slate-50/90 p-0.5 ${
+        compact ? 'overflow-x-auto' : ''
+      }`}
+      role="tablist"
+      aria-label="Nền tảng"
+    >
+      {PLATFORM_TABS.map((tab) => {
+        const on = value === tab.key
+        return (
+          <button
+            key={tab.key}
+            type="button"
+            role="tab"
+            aria-selected={on}
+            title={tab.label}
+            onClick={() => onChange(tab.key)}
+            className={`inline-flex items-center justify-center gap-1 h-7 rounded-lg text-[10px] font-bold transition-all whitespace-nowrap ${
+              compact ? 'flex-1 min-w-[44px] px-1.5' : 'px-2'
+            } ${platformPillClass(on, tab.key)}`}
+          >
+            <PlatformGlyph name={tab.key} />
+            {!compact && (
+              <span>
+                {tab.key === 'facebook'
+                  ? 'FB'
+                  : tab.key === 'instagram'
+                    ? 'IG'
+                    : tab.key === 'youtube'
+                      ? 'YT'
+                      : tab.label}
+              </span>
+            )}
+            {compact && tab.key === 'all' && <span>Tất cả</span>}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function InboxMonthSelect({
+  value,
+  onChange,
+  fullWidth,
+}: {
+  value: string
+  onChange: (next: string) => void
+  fullWidth?: boolean
+}) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger
+        className={`${fullWidth ? 'w-full' : 'min-w-[148px]'} h-7 text-[11px] rounded-xl border-slate-200 bg-slate-50/90 px-2 [&>span]:line-clamp-1`}
+      >
+        <span className="flex items-center gap-1.5 min-w-0">
+          <CalendarDays className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+          <SelectValue placeholder="Tháng" />
+        </span>
+      </SelectTrigger>
+      <SelectContent className="max-h-72 bg-white rounded-xl">
+        {INBOX_MONTH_OPTIONS.map((opt) => (
+          <SelectItem key={opt.value} value={opt.value}>
+            {opt.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
 }
 
 function InboxPageSelectItems({
@@ -152,6 +272,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   const [labelFilter, setLabelFilter] = useState<InboxLabelFilterValue>('all')
   const [selectedPageId, setSelectedPageId] = useState<string | undefined>(pageId)
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>('all')
+  const [selectedMonth, setSelectedMonth] = useState(currentInboxMonthKey)
   const [, startFilterTransition] = useTransition()
 
   useEffect(() => {
@@ -215,10 +336,14 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   const graphPlatform = graphPlatformParam(platformFilter)
 
   const { data: convStats, isError: statsError, error: statsErr, isPending: statsPending } = useQuery({
-    queryKey: ['cskh', 'inbox', 'conversation-stats', pageKey, platformFilter],
+    queryKey: ['cskh', 'inbox', 'conversation-stats', pageKey, platformFilter, selectedMonth],
     queryFn: () =>
       inboxPlatformReady
-        ? fetchInboxConversationStats({ pageId: selectedPageId, platform: graphPlatform })
+        ? fetchInboxConversationStats({
+            pageId: selectedPageId,
+            platform: graphPlatform,
+            month: selectedMonth,
+          })
         : Promise.resolve(EMPTY_STATS),
     staleTime: 90_000,
     placeholderData: (prev) => prev,
@@ -249,7 +374,8 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
       unlabeledOnly?: boolean
       includeLabels?: boolean
       platform?: 'messenger' | 'instagram'
-    } = { pageId: selectedPageId, platform: graphPlatform }
+      month?: string
+    } = { pageId: selectedPageId, platform: graphPlatform, month: selectedMonth }
     switch (activeFilter) {
       case 'ads':
         base.fromAdOnly = true
@@ -268,7 +394,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
     }
     base.includeLabels = labelFilter !== 'all'
     return base
-  }, [selectedPageId, activeFilter, labelFilter, graphPlatform])
+  }, [selectedPageId, activeFilter, labelFilter, graphPlatform, selectedMonth])
 
   const listQueryKey = useMemo(
     () =>
@@ -284,8 +410,9 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
         platformFilter === 'all' || selectedPageId
           ? ''
           : filteredPages.map((p) => p.pageId).sort().join(','),
+        selectedMonth,
       ] as const,
-    [pageKey, activeFilter, debouncedSearch, labelFilter, platformFilter, selectedPageId, filteredPages],
+    [pageKey, activeFilter, debouncedSearch, labelFilter, platformFilter, selectedPageId, filteredPages, selectedMonth],
   )
 
   const {
@@ -442,10 +569,20 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
       return 'Không có hội thoại khớp nhãn đã chọn'
     }
     if (activeFilter === 'unread' && (convStats?.total ?? 0) > 0 && (convStats?.unread ?? 0) === 0) {
-      return 'Không còn hội thoại chưa đọc'
+      return `Không còn hội thoại chưa đọc trong ${formatInboxMonthLabel(selectedMonth)}`
+    }
+    if (
+      !listError &&
+      !statsPending &&
+      !statsError &&
+      activeFilter === 'all' &&
+      labelFilter === 'all' &&
+      (convStats?.total ?? 0) === 0
+    ) {
+      return `Không có hội thoại trong ${formatInboxMonthLabel(selectedMonth)}`
     }
     return undefined
-  }, [listError, listErr, labelFilter, convStats, activeFilter, platformFilter, filteredPages.length, pagesLoading])
+  }, [listError, listErr, labelFilter, convStats, activeFilter, platformFilter, filteredPages.length, pagesLoading, selectedMonth, statsPending, statsError])
 
   const showMigrationHint =
     labelFilter !== 'all' &&
@@ -649,7 +786,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   return (
     <div className="flex flex-col h-full bg-white overflow-hidden">
       {/* Top Filter Bar */}
-      <div className="flex items-center justify-between px-4 h-[46px] border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/50 shrink-0">
+      <div className="flex items-center justify-between gap-3 px-4 min-h-[46px] py-1.5 border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/50 shrink-0">
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600">
@@ -673,51 +810,38 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
         </div>
 
         {/* Right side filters */}
-        <div className="hidden md:flex items-center gap-3 text-xs">
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-400 font-medium">Nền tảng:</span>
-            <div className="flex rounded-lg border border-slate-200 bg-slate-50/80 p-0.5 overflow-x-auto max-w-[460px]">
-              {PLATFORM_TABS.map((tab) => {
-                const on = platformFilter === tab.key
-                return (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={() =>
-                      startFilterTransition(() => setPlatformFilter(tab.key))
-                    }
-                    className={`h-6 px-2 rounded-md text-[10px] font-bold transition-colors whitespace-nowrap ${platformTabClass(on, tab.key)}`}
-                  >
-                    {tab.label}
-                  </button>
-                )
-              })}
-            </div>
-            <span className="text-slate-400 font-medium">Trang:</span>
-            <Select
-              value={selectedPageId ?? 'all'}
-              onValueChange={(val: string) => setSelectedPageId(val === 'all' ? undefined : val)}
-              disabled={pagesLoading}
-            >
-              <SelectTrigger className="h-7 min-w-[140px] text-[11px] rounded-lg border-slate-200 bg-slate-50/80 px-2 [&>span]:line-clamp-1 [&>span]:truncate">
-                <SelectValue placeholder={pagesLoading ? 'Đang tải Page...' : 'Tất cả Page'} />
-              </SelectTrigger>
-              <SelectContent className="max-h-72 bg-white rounded-lg">
-                <InboxPageSelectItems
-                  pages={filteredPages}
-                  platformFilter={platformFilter}
-                  pagesLoading={pagesLoading}
-                />
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="hidden md:flex items-center gap-2 text-xs overflow-x-auto">
+          <InboxMonthSelect
+            value={selectedMonth}
+            onChange={(next) => startFilterTransition(() => setSelectedMonth(next))}
+          />
+          <InboxPlatformPills
+            value={platformFilter}
+            onChange={(next) => startFilterTransition(() => setPlatformFilter(next))}
+          />
+          <Select
+            value={selectedPageId ?? 'all'}
+            onValueChange={(val: string) => setSelectedPageId(val === 'all' ? undefined : val)}
+            disabled={pagesLoading}
+          >
+            <SelectTrigger className="h-7 min-w-[148px] max-w-[200px] text-[11px] rounded-xl border-slate-200 bg-slate-50/90 px-2 [&>span]:line-clamp-1 [&>span]:truncate">
+              <SelectValue placeholder={pagesLoading ? 'Đang tải Page...' : 'Tất cả Page'} />
+            </SelectTrigger>
+            <SelectContent className="max-h-72 bg-white rounded-xl">
+              <InboxPageSelectItems
+                pages={filteredPages}
+                platformFilter={platformFilter}
+                pagesLoading={pagesLoading}
+              />
+            </SelectContent>
+          </Select>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => syncMut.mutate()}
             disabled={syncMut.isPending}
             title="Đồng bộ hội thoại"
-            className="h-7 w-7 p-0 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 rounded-lg"
+            className="h-7 w-7 p-0 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 rounded-xl"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${syncMut.isPending ? 'animate-spin' : ''}`} />
           </Button>
@@ -791,14 +915,14 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
 
             <p className="text-[9.5px] text-slate-400 mt-1.5">
               {debouncedSearch
-                ? `Tìm trong ${filterCounts.all.toLocaleString()} hội thoại`
+                ? `Tìm trong ${formatInboxMonthLabel(selectedMonth, true)} · ${filterCounts.all.toLocaleString()} hội thoại`
                 : activeFilter === 'all'
                   ? (convStats?.total ?? 0) > 0
-                    ? `Đã tải ${allConversations.length.toLocaleString()} / ${filterCounts.all.toLocaleString()} · Cuộn để xem thêm`
-                    : `Đã tải ${allConversations.length.toLocaleString()} · Cuộn để xem thêm`
+                    ? `${formatInboxMonthLabel(selectedMonth, true)} · Đã tải ${allConversations.length.toLocaleString()} / ${filterCounts.all.toLocaleString()} · Cuộn để xem thêm`
+                    : `${formatInboxMonthLabel(selectedMonth, true)} · Đã tải ${allConversations.length.toLocaleString()} · Cuộn để xem thêm`
                   : activeFilter === 'unread'
-                    ? `${filterCounts.unread.toLocaleString()} chưa đọc · ${allConversations.length.toLocaleString()} đang hiển thị`
-                    : `${allConversations.length.toLocaleString()} hội thoại`}
+                    ? `${formatInboxMonthLabel(selectedMonth, true)} · ${filterCounts.unread.toLocaleString()} chưa đọc · ${allConversations.length.toLocaleString()} đang hiển thị`
+                    : `${formatInboxMonthLabel(selectedMonth, true)} · ${allConversations.length.toLocaleString()} hội thoại`}
             </p>
 
             {showMigrationHint && (
@@ -838,30 +962,25 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
 
           {/* Mobile page selector */}
           <div className="px-3 py-2 border-b border-slate-100 md:hidden space-y-2">
-            <div className="flex rounded-lg border border-slate-200 bg-slate-50/80 p-0.5 overflow-x-auto">
-              {PLATFORM_TABS.map((tab) => {
-                const on = platformFilter === tab.key
-                return (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={() => startFilterTransition(() => setPlatformFilter(tab.key))}
-                    className={`flex-1 min-w-[56px] h-7 rounded-md text-[10px] font-bold whitespace-nowrap ${platformTabClass(on, tab.key)}`}
-                  >
-                    {tab.label}
-                  </button>
-                )
-              })}
-            </div>
+            <InboxMonthSelect
+              value={selectedMonth}
+              onChange={(next) => startFilterTransition(() => setSelectedMonth(next))}
+              fullWidth
+            />
+            <InboxPlatformPills
+              compact
+              value={platformFilter}
+              onChange={(next) => startFilterTransition(() => setPlatformFilter(next))}
+            />
             <Select
               value={selectedPageId ?? 'all'}
               onValueChange={(val: string) => setSelectedPageId(val === 'all' ? undefined : val)}
               disabled={pagesLoading}
             >
-              <SelectTrigger className="w-full h-8 text-[11px] rounded-lg border-slate-200/60 [&>span]:line-clamp-1 [&>span]:truncate">
+              <SelectTrigger className="w-full h-8 text-[11px] rounded-xl border-slate-200/60 [&>span]:line-clamp-1 [&>span]:truncate">
                 <SelectValue placeholder={pagesLoading ? 'Đang tải kênh...' : 'Tất cả kênh'} />
               </SelectTrigger>
-              <SelectContent className="max-h-72 bg-white rounded-lg">
+              <SelectContent className="max-h-72 bg-white rounded-xl">
                 <InboxPageSelectItems
                   pages={filteredPages}
                   platformFilter={platformFilter}
