@@ -1,5 +1,6 @@
 import type { InfiniteData, QueryClient } from '@tanstack/react-query'
 import type { CskhInboxConversation, CskhInboxConversationPage, CskhInboxMessage } from './api'
+import { groupLiveMediaMessages } from './auditHelpers'
 import { inboxRtLog, inboxRtWarn } from './inboxRealtimeDebug'
 
 export type InboxRealtimeMessagePayload = CskhInboxMessage
@@ -269,8 +270,10 @@ export function appendInboxMessagesToCache(
   ) => {
     if (!prev) {
       if (!conversationPatch) return prev
-      const merged = [...incoming].sort(
-        (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime(),
+      const merged = collapseInboxMessageList(
+        [...incoming].sort(
+          (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime(),
+        ),
       )
       return {
         conversation: conversationPatch as CskhInboxConversation,
@@ -281,7 +284,7 @@ export function appendInboxMessagesToCache(
     for (const msg of incoming) {
       byId.set(msg.id, { ...byId.get(msg.id), ...msg })
     }
-    const merged = collapseInboxMessages([...byId.values()])
+    const merged = collapseInboxMessageList([...byId.values()])
     return {
       ...prev,
       conversation: conversationPatch
@@ -356,7 +359,7 @@ export function patchInboxConversationInCache(
 }
 
 export function collapseInboxMessageList(messages: CskhInboxMessage[]) {
-  return collapseInboxMessages(messages)
+  return groupLiveMediaMessages(collapseInboxMessages(messages))
 }
 
 export const INBOX_MESSAGE_PREVIEW_PREFIX = 'preview-'

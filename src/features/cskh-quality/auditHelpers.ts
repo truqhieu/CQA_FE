@@ -374,32 +374,57 @@ export function inboxMessagesAfterTranscript(
 /** Gộp nhiều tin ảnh cùng lúc (Facebook gửi 1 lần → nhiều row inbox) thành 1 bubble. */
 export function groupLiveMediaMessages(
   messages: CskhInboxMessage[]
-): Array<CskhInboxMessage & { attachmentUrls?: string[] }> {
-  const grouped: Array<CskhInboxMessage & { attachmentUrls?: string[] }> = []
+): Array<CskhInboxMessage & { attachmentUrls?: string[]; groupedMediaCount?: number }> {
+  const grouped: Array<CskhInboxMessage & { attachmentUrls?: string[]; groupedMediaCount?: number }> =
+    []
+
+  const isImageRow = (m: CskhInboxMessage) => {
+    const type = (m.messageType ?? '').toLowerCase()
+    if (type === 'video' || type === 'sticker' || type === 'audio') return false
+    return type === 'image' || type === 'photo' || type === 'file' || Boolean(m.attachmentUrl)
+  }
+  const isPlaceholderText = (text?: string | null) => {
+    const t = (text ?? '').trim()
+    return !t || /^(?:\[Ảnh\]|\[Video\]|\[attachment\])$/i.test(t)
+  }
 
   for (const msg of messages) {
     const prev = grouped[grouped.length - 1]
     const msgTs = parseMessageTime(msg.sentAt)
     const prevTs = prev ? parseMessageTime(prev.sentAt) : 0
-    const prevUrls = prev?.attachmentUrls ?? (prev?.attachmentUrl ? [prev.attachmentUrl] : [])
+    const prevUrls = dedupeMediaUrls([
+      ...(prev?.attachmentUrls ?? []),
+      prev?.attachmentUrl,
+    ])
+    const msgUrls = dedupeMediaUrls([...(msg.attachmentUrls ?? []), msg.attachmentUrl])
     const canMerge =
       prev &&
       prev.senderType === msg.senderType &&
-      prev.messageType === 'image' &&
-      msg.messageType === 'image' &&
-      !prev.text?.trim() &&
-      !msg.text?.trim() &&
-      Math.abs(msgTs - prevTs) <= 2000
+      isImageRow(prev) &&
+      isImageRow(msg) &&
+      isPlaceholderText(msg.text) &&
+      Math.abs(msgTs - prevTs) <= 8000
 
-    if (canMerge && msg.attachmentUrl) {
-      const merged = dedupeMediaUrls([...prevUrls, msg.attachmentUrl])
-      if (merged.length <= prevUrls.length) continue
-      prev!.attachmentUrls = merged.length > 1 ? merged : undefined
-      if (!prev!.attachmentUrl) prev!.attachmentUrl = merged[0]
+    if (canMerge) {
+      const merged = dedupeMediaUrls([...prevUrls, ...msgUrls])
+      prev.groupedMediaCount =
+        (prev.groupedMediaCount ?? Math.max(1, prevUrls.length)) + Math.max(1, msgUrls.length)
+      if (merged.length) {
+        prev.attachmentUrls = merged.length > 1 ? merged : undefined
+        if (!prev.attachmentUrl) prev.attachmentUrl = merged[0]
+      }
       continue
     }
 
-    grouped.push({ ...msg })
+    grouped.push({
+      ...msg,
+      attachmentUrls: msg.attachmentUrls?.length
+        ? msg.attachmentUrls
+        : msgUrls.length > 1
+          ? msgUrls
+          : undefined,
+      groupedMediaCount: isImageRow(msg) ? Math.max(1, msgUrls.length) : undefined,
+    })
   }
 
   return grouped

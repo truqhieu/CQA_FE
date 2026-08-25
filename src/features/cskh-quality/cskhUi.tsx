@@ -6,14 +6,18 @@ import { DatePicker } from '@/components/custom-ui/date-picker'
 import { formatAuditDateLabel } from './auditHelpers'
 import { cskhCustomerAvatarSrc, cskhPageAvatarSrc } from './messageMedia'
 
-/** Facebook CDN — proxy qua BE vì img tag không gửi JWT. */
+/** Facebook / Instagram CDN — proxy qua BE vì img tag không gửi JWT. */
 export function cskhAvatarSrc(pictureUrl?: string | null): string | undefined {
   if (!pictureUrl?.startsWith('http')) return undefined
-  if (/fbcdn|fbsbx|facebook\.com|fb\.com/i.test(pictureUrl)) {
+  if (/fbcdn|fbsbx|facebook\.com|fb\.com|cdninstagram|instagram\.com/i.test(pictureUrl)) {
     const base = (import.meta.env.VITE_API_URL || 'http://localhost:3003').replace(/\/$/, '')
     return `${base}/cskh/media/avatar?url=${encodeURIComponent(pictureUrl)}`
   }
   return pictureUrl
+}
+
+export function inboxChannelLabel(platform?: string | null): string {
+  return platform === 'instagram' ? 'Instagram' : 'Messenger'
 }
 
 export { cskhCustomerAvatarSrc, cskhMediaSrc, cskhPageAvatarSrc } from './messageMedia'
