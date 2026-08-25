@@ -475,15 +475,13 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   }, [])
 
   const filterCounts = useMemo(() => {
-    const loaded = allConversations.length
-    const total = convStats?.total ?? 0
     return {
-      all: total > 0 ? total : loaded,
+      all: convStats?.total ?? 0,
       unread: convStats?.unread ?? 0,
       ads: convStats?.fromAd ?? 0,
       normal: convStats?.normal ?? 0,
     }
-  }, [convStats, allConversations.length])
+  }, [convStats])
 
   const syncMut = useMutation({
     mutationFn: () => syncInboxFromGraph(selectedPageId),
@@ -517,6 +515,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
       }),
     enabled: !!selectedId,
     staleTime: 120_000,
+    refetchOnMount: 'always',
     refetchInterval: connected ? false : 20_000,
   })
 
@@ -757,7 +756,9 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
                   }`}>
                     {statsPending && convStats == null
                       ? '…'
-                      : filterCounts[tab.key].toLocaleString()}
+                      : statsError && convStats == null
+                        ? '—'
+                        : filterCounts[tab.key].toLocaleString()}
                   </span>
                   <span className="text-[9.5px] font-semibold mt-1 tracking-tight text-slate-400">
                     {tab.label}
