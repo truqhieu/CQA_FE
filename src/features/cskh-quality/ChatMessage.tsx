@@ -12,9 +12,18 @@ type ChatMessageProps = {
   expectMinImages?: number
 }
 
-function ChatMediaImage({ url, compact }: { url: string; compact?: boolean }) {
+function ChatMediaImage({
+  url,
+  compact,
+  onFailed,
+}: {
+  url: string
+  compact?: boolean
+  onFailed?: (url: string) => void
+}) {
+  const cdn = /fbcdn|fbsbx|facebook\.com|fb\.com|cdninstagram|instagram\.com/i.test(url)
   const [failed, setFailed] = useState(false)
-  const [useProxy, setUseProxy] = useState(false)
+  const [useProxy, setUseProxy] = useState(cdn)
   const src = useProxy ? cskhMediaProxySrc(url) : cskhMediaSrc(url)
   if (failed || !src) return null
   return (
@@ -31,7 +40,10 @@ function ChatMediaImage({ url, compact }: { url: string; compact?: boolean }) {
         loading="lazy"
         onError={() => {
           if (!useProxy) setUseProxy(true)
-          else setFailed(true)
+          else {
+            setFailed(true)
+            onFailed?.(url)
+          }
         }}
       />
     </a>
@@ -85,6 +97,7 @@ export const ChatMessage = memo(function ChatMessage({
   const [resolvedType, setResolvedType] = useState<string | null>(message.messageType ?? null)
   const [resolvedText, setResolvedText] = useState<string | null | undefined>(message.text)
   const [resolving, setResolving] = useState(false)
+  const [failedUrls, setFailedUrls] = useState<Set<string>>(() => new Set())
   const resolveAttemptedFor = useRef<string | null>(null)
 
   useEffect(() => {
@@ -98,6 +111,7 @@ export const ChatMessage = memo(function ChatMessage({
     setResolvedUrls(urls)
     setResolvedType(message.messageType ?? null)
     setResolvedText(message.text)
+    setFailedUrls(new Set())
   }, [message.id, message.attachmentUrl, message.attachmentUrls, message.messageType, message.text])
 
   const media = resolveMessageMedia({
@@ -140,7 +154,9 @@ export const ChatMessage = memo(function ChatMessage({
   }, [message.id, needsResolve])
 
   const imageUrls =
-    media.messageType === 'image' ? resolvedUrls.filter((u) => u.startsWith('http')) : []
+    media.messageType === 'image'
+      ? resolvedUrls.filter((u) => u.startsWith('http') && !failedUrls.has(u))
+      : []
   const videoUrl = media.messageType === 'video' ? (resolvedUrls[0] ?? media.attachmentUrl) : null
   const caption = media.displayText
 
@@ -164,13 +180,26 @@ export const ChatMessage = memo(function ChatMessage({
           {imageUrls.length > 0 ? (
             <div
               className={
-                imageUrls.length > 1
-                  ? 'grid max-w-[240px] grid-cols-2 gap-1'
-                  : 'grid grid-cols-1 gap-1'
+                imageUrls.length === 1
+                  ? 'grid grid-cols-1 gap-1'
+                  : imageUrls.length === 3
+                    ? 'grid max-w-[240px] grid-cols-3 gap-1'
+                    : 'grid max-w-[240px] grid-cols-2 gap-1'
               }
             >
               {imageUrls.map((url, idx) => (
-                <ChatMediaImage key={`${url}-${idx}`} url={url} compact={imageUrls.length > 1} />
+                <ChatMediaImage
+                  key={`${url}-${idx}`}
+                  url={url}
+                  compact={imageUrls.length > 1}
+                  onFailed={(failed) =>
+                    setFailedUrls((prev) => {
+                      const next = new Set(prev)
+                      next.add(failed)
+                      return next
+                    })
+                  }
+                />
               ))}
             </div>
           ) : null}
