@@ -35,9 +35,7 @@ import { inboxRtLog } from './inboxRealtimeDebug'
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/custom-ui/select'
@@ -177,21 +175,15 @@ function InboxPageSelectItems({
   platformFilter: PlatformFilter
   pagesLoading: boolean
 }) {
-  const groups = [
-    { key: 'facebook' as const, label: 'Facebook', items: pages.filter((p) => pageBucket(p.platform) === 'facebook') },
-    { key: 'instagram' as const, label: 'Instagram', items: pages.filter((p) => pageBucket(p.platform) === 'instagram') },
-    { key: 'threads' as const, label: 'Threads', items: pages.filter((p) => pageBucket(p.platform) === 'threads') },
-    { key: 'youtube' as const, label: 'YouTube', items: pages.filter((p) => pageBucket(p.platform) === 'youtube') },
-  ]
   const allLabel =
     platformFilter === 'instagram'
-      ? 'IG'
+      ? 'kênh Instagram'
       : platformFilter === 'facebook'
-        ? 'FB'
+        ? 'kênh Facebook'
         : platformFilter === 'threads'
-          ? 'Threads'
+          ? 'kênh Threads'
           : platformFilter === 'youtube'
-            ? 'YouTube'
+            ? 'kênh YouTube'
             : 'kênh'
 
   return (
@@ -199,24 +191,12 @@ function InboxPageSelectItems({
       <SelectItem value="all">
         Tất cả {allLabel} ({pagesLoading ? '…' : pages.length})
       </SelectItem>
-      {platformFilter === 'all'
-        ? groups
-            .filter((g) => g.items.length > 0)
-            .map((g) => (
-              <SelectGroup key={g.key}>
-                <SelectLabel>{g.label}</SelectLabel>
-                {g.items.map((page) => (
-                  <SelectItem key={page.pageId} value={page.pageId}>
-                    {page.pageName || page.pageId}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            ))
-        : pages.map((page) => (
-            <SelectItem key={page.pageId} value={page.pageId}>
-              {page.pageName || page.pageId}
-            </SelectItem>
-          ))}
+      {platformFilter !== 'all' &&
+        pages.map((page) => (
+          <SelectItem key={page.pageId} value={page.pageId}>
+            {page.pageName || page.pageId}
+          </SelectItem>
+        ))}
     </>
   )
 }
@@ -289,7 +269,11 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   const inboxPlatformReady = hasConnectedInbox(platformFilter)
 
   useEffect(() => {
-    if (!selectedPageId || platformFilter === 'all') return
+    if (platformFilter === 'all') {
+      if (selectedPageId) setSelectedPageId(undefined)
+      return
+    }
+    if (!selectedPageId) return
     const stillVisible = filteredPages.some((p) => p.pageId === selectedPageId)
     if (!stillVisible) setSelectedPageId(undefined)
   }, [selectedPageId, platformFilter, filteredPages])
@@ -297,18 +281,32 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   const pageKey = selectedPageId ?? 'all'
   const graphPlatform = graphPlatformParam(platformFilter)
 
+  const statsQueryKey = useMemo(
+    () =>
+      ['cskh', 'inbox', 'conversation-stats', pageKey, platformFilter, selectedMonth] as const,
+    [pageKey, platformFilter, selectedMonth],
+  )
+
+  useEffect(() => {
+    void qc.cancelQueries({
+      queryKey: ['cskh', 'inbox', 'conversation-stats'],
+      predicate: (query) => query.queryKey.join('|') !== statsQueryKey.join('|'),
+    })
+  }, [qc, statsQueryKey])
+
   const { data: convStats, isError: statsError, error: statsErr, isPending: statsPending } = useQuery({
-    queryKey: ['cskh', 'inbox', 'conversation-stats', pageKey, platformFilter, selectedMonth],
-    queryFn: () =>
+    queryKey: statsQueryKey,
+    queryFn: ({ signal }) =>
       inboxPlatformReady
         ? fetchInboxConversationStats({
             pageId: selectedPageId,
             platform: graphPlatform,
             month: selectedMonth,
+            signal,
           })
         : Promise.resolve(EMPTY_STATS),
     staleTime: 90_000,
-    placeholderData: (prev) => prev,
+    retry: 0,
   })
 
   const { data: inboxLabels } = useQuery({
@@ -771,7 +769,12 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
           />
           <InboxPlatformSelect
             value={platformFilter}
-            onChange={(next) => startFilterTransition(() => setPlatformFilter(next))}
+            onChange={(next) =>
+              startFilterTransition(() => {
+                setPlatformFilter(next)
+                setSelectedPageId(undefined)
+              })
+            }
           />
           <Select
             value={selectedPageId ?? 'all'}
