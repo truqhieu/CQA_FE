@@ -510,11 +510,12 @@ export function ChatPanel({
                 key={msg.id}
                 message={msg}
                 isOwn={msg.isOwn}
-                expectMinImages={
+                expectMinImages={Math.max(
+                  parseInboxPhotoPreviewCount(msg.text),
                   idx === displayMessages.length - 1
                     ? parseInboxPhotoPreviewCount(conversation.lastMessage)
-                    : 0
-                }
+                    : 0,
+                )}
               />
             ))}
             {isCustomerTyping && <TypingIndicator />}

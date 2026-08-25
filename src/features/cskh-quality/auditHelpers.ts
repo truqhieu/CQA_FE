@@ -403,7 +403,7 @@ export function groupLiveMediaMessages(
       isImageRow(prev) &&
       isImageRow(msg) &&
       isPlaceholderText(msg.text) &&
-      Math.abs(msgTs - prevTs) <= 8000
+      Math.abs(msgTs - prevTs) <= 15000
 
     if (canMerge) {
       const merged = dedupeMediaUrls([...prevUrls, ...msgUrls])
