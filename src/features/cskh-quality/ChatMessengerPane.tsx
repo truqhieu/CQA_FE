@@ -214,7 +214,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   const pageKey = selectedPageId ?? 'all'
   const graphPlatform = graphPlatformParam(platformFilter)
 
-  const { data: convStats, isError: statsError, error: statsErr } = useQuery({
+  const { data: convStats, isError: statsError, error: statsErr, isPending: statsPending } = useQuery({
     queryKey: ['cskh', 'inbox', 'conversation-stats', pageKey, platformFilter],
     queryFn: () =>
       inboxPlatformReady
@@ -475,15 +475,13 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   }, [])
 
   const filterCounts = useMemo(() => {
-    const loaded = allConversations.length
-    const total = convStats?.total ?? 0
     return {
-      all: total > 0 ? total : loaded,
+      all: convStats?.total ?? 0,
       unread: convStats?.unread ?? 0,
       ads: convStats?.fromAd ?? 0,
       normal: convStats?.normal ?? 0,
     }
-  }, [convStats, allConversations.length])
+  }, [convStats])
 
   const syncMut = useMutation({
     mutationFn: () => syncInboxFromGraph(selectedPageId),
@@ -517,6 +515,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
       }),
     enabled: !!selectedId,
     staleTime: 120_000,
+    refetchOnMount: 'always',
     refetchInterval: connected ? false : 20_000,
   })
 
@@ -755,7 +754,11 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
                   <span className={`text-[13px] font-extrabold leading-none ${
                     isActive ? tab.activeColor.split(' ')[0] : 'text-slate-600'
                   }`}>
-                    {filterCounts[tab.key].toLocaleString()}
+                    {statsPending && convStats == null
+                      ? '…'
+                      : statsError && convStats == null
+                        ? '—'
+                        : filterCounts[tab.key].toLocaleString()}
                   </span>
                   <span className="text-[9.5px] font-semibold mt-1 tracking-tight text-slate-400">
                     {tab.label}

@@ -109,6 +109,7 @@ export function ChatPanel({
         qc.setQueryData(['cskh', 'inbox', 'messages', conversation.id], partial)
       }),
     staleTime: 120_000,
+    refetchOnMount: 'always',
     refetchInterval: false,
   })
 

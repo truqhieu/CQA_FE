@@ -269,16 +269,8 @@ export function appendInboxMessagesToCache(
     prev: { conversation: CskhInboxConversation; messages: CskhInboxMessage[] } | undefined,
   ) => {
     if (!prev) {
-      if (!conversationPatch) return prev
-      const merged = collapseInboxMessageList(
-        [...incoming].sort(
-          (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime(),
-        ),
-      )
-      return {
-        conversation: conversationPatch as CskhInboxConversation,
-        messages: merged,
-      }
+      // SSE chỉ vài tin mới — không seed cache thiếu lịch sử (mở chat sẽ trống).
+      return prev
     }
     const byId = new Map((prev.messages ?? []).map((m) => [m.id, m]))
     for (const msg of incoming) {
