@@ -221,6 +221,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
         ? fetchInboxConversationStats({ pageId: selectedPageId, platform: graphPlatform })
         : Promise.resolve(EMPTY_STATS),
     staleTime: 90_000,
+    placeholderData: (prev) => prev,
   })
 
   const { data: inboxLabels } = useQuery({
@@ -474,13 +475,15 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   }, [])
 
   const filterCounts = useMemo(() => {
+    const loaded = allConversations.length
+    const total = convStats?.total ?? 0
     return {
-      all: convStats?.total ?? 0,
+      all: total > 0 ? total : loaded,
       unread: convStats?.unread ?? 0,
       ads: convStats?.fromAd ?? 0,
       normal: convStats?.normal ?? 0,
     }
-  }, [convStats])
+  }, [convStats, allConversations.length])
 
   const syncMut = useMutation({
     mutationFn: () => syncInboxFromGraph(selectedPageId),
@@ -787,7 +790,9 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
               {debouncedSearch
                 ? `Tìm trong ${filterCounts.all.toLocaleString()} hội thoại`
                 : activeFilter === 'all'
-                  ? `Đã tải ${allConversations.length.toLocaleString()} / ${filterCounts.all.toLocaleString()} · Cuộn để xem thêm`
+                  ? (convStats?.total ?? 0) > 0
+                    ? `Đã tải ${allConversations.length.toLocaleString()} / ${filterCounts.all.toLocaleString()} · Cuộn để xem thêm`
+                    : `Đã tải ${allConversations.length.toLocaleString()} · Cuộn để xem thêm`
                   : activeFilter === 'unread'
                     ? `${filterCounts.unread.toLocaleString()} chưa đọc · ${allConversations.length.toLocaleString()} đang hiển thị`
                     : `${allConversations.length.toLocaleString()} hội thoại`}
