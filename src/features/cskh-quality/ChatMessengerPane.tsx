@@ -214,7 +214,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
   const pageKey = selectedPageId ?? 'all'
   const graphPlatform = graphPlatformParam(platformFilter)
 
-  const { data: convStats, isError: statsError, error: statsErr } = useQuery({
+  const { data: convStats, isError: statsError, error: statsErr, isPending: statsPending } = useQuery({
     queryKey: ['cskh', 'inbox', 'conversation-stats', pageKey, platformFilter],
     queryFn: () =>
       inboxPlatformReady
@@ -755,7 +755,9 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
                   <span className={`text-[13px] font-extrabold leading-none ${
                     isActive ? tab.activeColor.split(' ')[0] : 'text-slate-600'
                   }`}>
-                    {filterCounts[tab.key].toLocaleString()}
+                    {statsPending && convStats == null
+                      ? '…'
+                      : filterCounts[tab.key].toLocaleString()}
                   </span>
                   <span className="text-[9.5px] font-semibold mt-1 tracking-tight text-slate-400">
                     {tab.label}
