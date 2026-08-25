@@ -52,7 +52,7 @@ export function inboxMonthOptions(count = 18): { value: string; label: string }[
 }
 
 export function conversationInInboxMonth(
-  lastMessageAt: string | Date | undefined,
+  lastMessageAt: string | Date | null | undefined,
   monthKey: string | undefined,
 ): boolean {
   if (!monthKey) return true
