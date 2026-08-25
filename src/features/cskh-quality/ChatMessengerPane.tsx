@@ -166,6 +166,14 @@ function InboxMonthSelect({
   )
 }
 
+function channelAllLabel(platformFilter: PlatformFilter, count: string | number): string {
+  if (platformFilter === 'facebook') return `Tất cả FB (${count})`
+  if (platformFilter === 'instagram') return `Tất cả IG (${count})`
+  if (platformFilter === 'threads') return `Tất cả Threads (${count})`
+  if (platformFilter === 'youtube') return `Tất cả YT (${count})`
+  return `Tất cả kênh (${count})`
+}
+
 function InboxPageSelectItems({
   pages,
   platformFilter,
@@ -175,22 +183,11 @@ function InboxPageSelectItems({
   platformFilter: PlatformFilter
   pagesLoading: boolean
 }) {
-  const allLabel =
-    platformFilter === 'instagram'
-      ? 'kênh Instagram'
-      : platformFilter === 'facebook'
-        ? 'kênh Facebook'
-        : platformFilter === 'threads'
-          ? 'kênh Threads'
-          : platformFilter === 'youtube'
-            ? 'kênh YouTube'
-            : 'kênh'
+  const count = pagesLoading ? '…' : pages.length
 
   return (
     <>
-      <SelectItem value="all">
-        Tất cả {allLabel} ({pagesLoading ? '…' : pages.length})
-      </SelectItem>
+      <SelectItem value="all">{channelAllLabel(platformFilter, count)}</SelectItem>
       {platformFilter !== 'all' &&
         pages.map((page) => (
           <SelectItem key={page.pageId} value={page.pageId}>
@@ -781,13 +778,15 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
             onValueChange={(val: string) => setSelectedPageId(val === 'all' ? undefined : val)}
             disabled={pagesLoading}
           >
-            <SelectTrigger className="h-8 w-[176px] text-[11px] font-semibold rounded-lg border-slate-200 bg-white px-2.5 shadow-none">
-              <span className="flex items-center gap-1.5 min-w-0">
+            <SelectTrigger className="h-8 w-[168px] overflow-hidden whitespace-nowrap text-[11px] font-semibold rounded-lg border-slate-200 bg-white px-2.5 shadow-none">
+              <span className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
                 <Radio className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                <SelectValue placeholder={pagesLoading ? 'Đang tải...' : 'Tất cả kênh'} />
+                <span className="min-w-0 flex-1 truncate leading-none">
+                  <SelectValue placeholder={pagesLoading ? 'Đang tải...' : 'Tất cả kênh'} />
+                </span>
               </span>
             </SelectTrigger>
-            <SelectContent className="max-h-72 bg-white rounded-xl min-w-[220px]">
+            <SelectContent className="max-h-72 bg-white rounded-xl min-w-[240px]">
               <InboxPageSelectItems
                 pages={filteredPages}
                 platformFilter={platformFilter}
