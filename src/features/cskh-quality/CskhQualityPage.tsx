@@ -1961,8 +1961,9 @@ function ConfigTab() {
           <h3 className="font-semibold text-foreground">Facebook Pages</h3>
           {pages.length ? (
             <p className="mt-0.5 text-xs text-n-500 dark:text-n-400">
-              {pages.length.toLocaleString('vi-VN')} Page đã kết nối — chọn kênh khi chấm điểm ở tab
-              Chấm điểm. Bật kênh để tải và hiển thị cuộc hội thoại.
+              {pages.length.toLocaleString('vi-VN')} kênh đã kết nối (Facebook Page + Instagram
+              Professional). Bấm Kết nối Facebook lại sau khi Meta duyệt instagram_manage_messages
+              để hiện kênh IG. Tab Inbox → Instagram để chat realtime.
             </p>
           ) : null}
         </div>
@@ -1988,7 +1989,9 @@ function ConfigTab() {
                     <p className="truncate font-semibold text-foreground">
                       {p.pageName || p.pageId}
                     </p>
-                    <p className="truncate text-xs text-n-400 dark:text-n-500">ID: {p.pageId}</p>
+                    <p className="truncate text-xs text-n-400 dark:text-n-500">
+                      {p.platform === 'instagram' ? 'Instagram' : 'Facebook'} · ID: {p.pageId}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">

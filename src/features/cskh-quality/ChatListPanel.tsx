@@ -3,7 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { Loader2, MessageCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type CskhInboxConversation } from './api'
-import { CskhPageAvatar } from './cskhUi'
+import { CskhPageAvatar, inboxChannelLabel } from './cskhUi'
 import { ConversationLabelBadges } from './ChatLabelBar'
 
 type ChatListPanelProps = {
@@ -181,9 +181,19 @@ const ConversationRow = memo(function ConversationRow({
           </div>
 
           <div className="flex items-center gap-1 mt-0.5">
-            <span className="inline-flex items-center gap-0.5 text-[9.5px] text-blue-500 font-medium">
-              <span className="w-1 h-1 rounded-full bg-blue-500 inline-block" />
-              Messenger
+            <span
+              className={cn(
+                'inline-flex items-center gap-0.5 text-[9.5px] font-medium',
+                conv.platform === 'instagram' ? 'text-pink-500' : 'text-blue-500',
+              )}
+            >
+              <span
+                className={cn(
+                  'w-1 h-1 rounded-full inline-block',
+                  conv.platform === 'instagram' ? 'bg-pink-500' : 'bg-blue-500',
+                )}
+              />
+              {inboxChannelLabel(conv.platform)}
             </span>
             {conv.pageName && (
               <>

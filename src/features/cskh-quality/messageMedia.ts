@@ -118,7 +118,7 @@ export function parseInboxPhotoPreviewCount(preview?: string | null): number {
 /** Proxy media Facebook CDN qua BE (fallback khi load trực tiếp thất bại). */
 export function cskhMediaProxySrc(mediaUrl?: string | null): string | undefined {
   if (!mediaUrl?.startsWith('http')) return undefined
-  if (/fbcdn|fbsbx|facebook\.com|fb\.com/i.test(mediaUrl)) {
+  if (/fbcdn|fbsbx|facebook\.com|fb\.com|cdninstagram|instagram\.com/i.test(mediaUrl)) {
     const base = (import.meta.env.VITE_API_URL || 'http://localhost:3003').replace(/\/$/, '')
     return `${base}/cskh/media/proxy?url=${encodeURIComponent(mediaUrl)}`
   }
@@ -140,7 +140,7 @@ export function cskhPageAvatarSrc(input: {
   const base = (import.meta.env.VITE_API_URL || 'http://localhost:3003').replace(/\/$/, '')
 
   if (pictureUrl?.startsWith('http')) {
-    if (/fbcdn|fbsbx|facebook\.com|fb\.com/i.test(pictureUrl)) {
+    if (/fbcdn|fbsbx|facebook\.com|fb\.com|cdninstagram|instagram\.com/i.test(pictureUrl)) {
       return `${base}/cskh/media/avatar?url=${encodeURIComponent(pictureUrl)}`
     }
     return pictureUrl
@@ -162,7 +162,7 @@ export function cskhCustomerAvatarSrc(input: {
 }): string | undefined {
   const { pictureUrl, pageId, psid, liveFetch } = input
   if (pictureUrl?.startsWith('http')) {
-    if (/fbcdn|fbsbx|facebook\.com|fb\.com/i.test(pictureUrl)) {
+    if (/fbcdn|fbsbx|facebook\.com|fb\.com|cdninstagram|instagram\.com/i.test(pictureUrl)) {
       const base = (import.meta.env.VITE_API_URL || 'http://localhost:3003').replace(/\/$/, '')
       return `${base}/cskh/media/avatar?url=${encodeURIComponent(pictureUrl)}`
     }

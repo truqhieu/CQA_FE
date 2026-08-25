@@ -384,7 +384,11 @@ export function ChatPanel({
                 `Khách hàng ${(conversationWithLabels.participantPsid ?? conversation.participantPsid ?? '').slice(0, 8) || '?'}`}
             </h3>
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-              <span className="text-[10px] text-slate-400 font-medium">Cuộc trò chuyện Facebook</span>
+              <span className="text-[10px] text-slate-400 font-medium">
+                {conversation.platform === 'instagram'
+                  ? 'Cuộc trò chuyện Instagram'
+                  : 'Cuộc trò chuyện Facebook'}
+              </span>
               {translatingPending && (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-indigo-50 text-indigo-600 leading-none">
                   <Loader2 className="w-2.5 h-2.5 animate-spin" />
