@@ -136,8 +136,8 @@ function InboxPlatformPills({
 }) {
   return (
     <div
-      className={`flex items-center rounded-xl border border-slate-200/80 bg-slate-50/90 p-0.5 ${
-        compact ? 'overflow-x-auto' : ''
+      className={`flex items-center rounded-xl border border-slate-200/80 bg-white p-0.5 ${
+        compact ? 'overflow-x-auto max-w-full' : ''
       }`}
       role="tablist"
       aria-label="Nền tảng"
@@ -153,22 +153,11 @@ function InboxPlatformPills({
             title={tab.label}
             onClick={() => onChange(tab.key)}
             className={`inline-flex items-center justify-center gap-1 h-7 rounded-lg text-[10px] font-bold transition-all whitespace-nowrap ${
-              compact ? 'flex-1 min-w-[44px] px-1.5' : 'px-2'
+              compact ? 'flex-1 min-w-[56px] px-1.5' : 'px-2.5'
             } ${platformPillClass(on, tab.key)}`}
           >
             <PlatformGlyph name={tab.key} />
-            {!compact && (
-              <span>
-                {tab.key === 'facebook'
-                  ? 'FB'
-                  : tab.key === 'instagram'
-                    ? 'IG'
-                    : tab.key === 'youtube'
-                      ? 'YT'
-                      : tab.label}
-              </span>
-            )}
-            {compact && tab.key === 'all' && <span>Tất cả</span>}
+            <span>{tab.label}</span>
           </button>
         )
       })}
@@ -188,7 +177,7 @@ function InboxMonthSelect({
   return (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger
-        className={`${fullWidth ? 'w-full' : 'min-w-[148px]'} h-7 text-[11px] rounded-xl border-slate-200 bg-slate-50/90 px-2 [&>span]:line-clamp-1`}
+        className={`${fullWidth ? 'w-full' : 'min-w-[158px]'} h-7 text-[11px] font-semibold rounded-xl border-slate-200 bg-white px-2 [&>span]:line-clamp-1`}
       >
         <span className="flex items-center gap-1.5 min-w-0">
           <CalendarDays className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
@@ -785,21 +774,20 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
 
   return (
     <div className="flex flex-col h-full bg-white overflow-hidden">
-      {/* Top Filter Bar */}
-      <div className="flex items-center justify-between gap-3 px-4 min-h-[46px] py-1.5 border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/50 shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600">
-              <Inbox className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
-            </div>
-            <div>
-              <h2 className="text-[13px] font-bold text-slate-800 leading-none">Hộp thư đa kênh thông minh</h2>
-              <p className="text-[9.5px] text-slate-400 font-medium mt-0.5">AI-Powered Smart Omni-channel Inbox</p>
-            </div>
+      {/* Title */}
+      <div className="flex items-center justify-between gap-3 px-4 min-h-[42px] py-1.5 border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/50 shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 shrink-0">
+            <Inbox className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
           </div>
-          {/* Connection status */}
+          <div className="min-w-0">
+            <h2 className="text-[13px] font-bold text-slate-800 leading-none">Hộp thư đa kênh thông minh</h2>
+            <p className="text-[9.5px] text-slate-400 font-medium mt-0.5 truncate">
+              {formatInboxMonthLabel(selectedMonth)} · 4 số đếm theo tháng và nền tảng đang chọn
+            </p>
+          </div>
           <span
-            className={`flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full ml-1 ${
+            className={`flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full ml-1 shrink-0 ${
               connected
                 ? 'bg-emerald-50 text-emerald-600'
                 : 'bg-red-50 text-red-500 animate-pulse'
@@ -808,24 +796,44 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
             {connected ? <><Wifi className="w-2.5 h-2.5" /> Live</> : <><WifiOff className="w-2.5 h-2.5" /> Offline</>}
           </span>
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => syncMut.mutate()}
+          disabled={syncMut.isPending}
+          title="Đồng bộ hội thoại"
+          className="h-7 w-7 p-0 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 rounded-xl shrink-0"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${syncMut.isPending ? 'animate-spin' : ''}`} />
+        </Button>
+      </div>
 
-        {/* Right side filters */}
-        <div className="hidden md:flex items-center gap-2 text-xs overflow-x-auto">
+      {/* Tháng + nền tảng + kênh — luôn hiện; 4 số đếm phía dưới theo đúng bộ lọc này */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 border-b border-slate-100 bg-slate-50/70 shrink-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-semibold text-slate-400 whitespace-nowrap">Tháng</span>
           <InboxMonthSelect
             value={selectedMonth}
             onChange={(next) => startFilterTransition(() => setSelectedMonth(next))}
           />
+        </div>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-[10px] font-semibold text-slate-400 whitespace-nowrap">Nền tảng</span>
           <InboxPlatformPills
+            compact
             value={platformFilter}
             onChange={(next) => startFilterTransition(() => setPlatformFilter(next))}
           />
+        </div>
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <span className="text-[10px] font-semibold text-slate-400 whitespace-nowrap">Kênh</span>
           <Select
             value={selectedPageId ?? 'all'}
             onValueChange={(val: string) => setSelectedPageId(val === 'all' ? undefined : val)}
             disabled={pagesLoading}
           >
-            <SelectTrigger className="h-7 min-w-[148px] max-w-[200px] text-[11px] rounded-xl border-slate-200 bg-slate-50/90 px-2 [&>span]:line-clamp-1 [&>span]:truncate">
-              <SelectValue placeholder={pagesLoading ? 'Đang tải Page...' : 'Tất cả Page'} />
+            <SelectTrigger className="h-7 min-w-[140px] max-w-[240px] w-full text-[11px] rounded-xl border-slate-200 bg-white px-2 [&>span]:line-clamp-1 [&>span]:truncate">
+              <SelectValue placeholder={pagesLoading ? 'Đang tải kênh...' : 'Tất cả kênh'} />
             </SelectTrigger>
             <SelectContent className="max-h-72 bg-white rounded-xl">
               <InboxPageSelectItems
@@ -835,16 +843,6 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
               />
             </SelectContent>
           </Select>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => syncMut.mutate()}
-            disabled={syncMut.isPending}
-            title="Đồng bộ hội thoại"
-            className="h-7 w-7 p-0 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 rounded-xl"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${syncMut.isPending ? 'animate-spin' : ''}`} />
-          </Button>
         </div>
       </div>
 
@@ -958,36 +956,6 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
                 </span>
               </div>
             )}
-          </div>
-
-          {/* Mobile page selector */}
-          <div className="px-3 py-2 border-b border-slate-100 md:hidden space-y-2">
-            <InboxMonthSelect
-              value={selectedMonth}
-              onChange={(next) => startFilterTransition(() => setSelectedMonth(next))}
-              fullWidth
-            />
-            <InboxPlatformPills
-              compact
-              value={platformFilter}
-              onChange={(next) => startFilterTransition(() => setPlatformFilter(next))}
-            />
-            <Select
-              value={selectedPageId ?? 'all'}
-              onValueChange={(val: string) => setSelectedPageId(val === 'all' ? undefined : val)}
-              disabled={pagesLoading}
-            >
-              <SelectTrigger className="w-full h-8 text-[11px] rounded-xl border-slate-200/60 [&>span]:line-clamp-1 [&>span]:truncate">
-                <SelectValue placeholder={pagesLoading ? 'Đang tải kênh...' : 'Tất cả kênh'} />
-              </SelectTrigger>
-              <SelectContent className="max-h-72 bg-white rounded-xl">
-                <InboxPageSelectItems
-                  pages={filteredPages}
-                  platformFilter={platformFilter}
-                  pagesLoading={pagesLoading}
-                />
-              </SelectContent>
-            </Select>
           </div>
 
           {/* Conversations List */}
