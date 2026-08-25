@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useTransition, useRef } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { InfiniteData } from '@tanstack/react-query'
-import { ArrowLeft, RefreshCw, Search, MessageCircle, Wifi, WifiOff, Inbox, CalendarDays, LayoutGrid } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Search, MessageCircle, Wifi, WifiOff, Inbox, CalendarDays, LayoutGrid, Radio } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { getApiErrorMessage } from '@/lib/axios'
@@ -125,13 +125,13 @@ function InboxPlatformSelect({
 }) {
   return (
     <Select value={value} onValueChange={(next: string) => onChange(next as PlatformFilter)}>
-      <SelectTrigger className="h-8 w-full text-[11px] font-semibold rounded-xl border-slate-200 bg-white px-2.5 [&>span]:line-clamp-1 [&>span]:truncate">
+      <SelectTrigger className="h-8 w-[138px] text-[11px] font-semibold rounded-lg border-slate-200 bg-white px-2.5 shadow-none">
         <span className="flex items-center gap-1.5 min-w-0">
           <PlatformGlyph name={value} />
           <SelectValue placeholder="Tất cả" />
         </span>
       </SelectTrigger>
-      <SelectContent className="bg-white rounded-xl">
+      <SelectContent className="bg-white rounded-xl min-w-[160px]">
         {PLATFORM_TABS.map((tab) => (
           <SelectItem key={tab.key} value={tab.key}>
             {tab.label}
@@ -151,13 +151,13 @@ function InboxMonthSelect({
 }) {
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="h-8 w-full text-[11px] font-semibold rounded-xl border-slate-200 bg-white px-2.5 [&>span]:line-clamp-1">
+      <SelectTrigger className="h-8 w-[148px] text-[11px] font-semibold rounded-lg border-slate-200 bg-white px-2.5 shadow-none">
         <span className="flex items-center gap-1.5 min-w-0">
           <CalendarDays className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
           <SelectValue placeholder="Tháng" />
         </span>
       </SelectTrigger>
-      <SelectContent className="max-h-72 bg-white rounded-xl">
+      <SelectContent className="max-h-72 bg-white rounded-xl min-w-[180px]">
         {INBOX_MONTH_OPTIONS.map((opt) => (
           <SelectItem key={opt.value} value={opt.value}>
             {opt.label}
@@ -747,20 +747,14 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
 
   return (
     <div className="flex flex-col h-full bg-white overflow-hidden">
-      {/* Title */}
-      <div className="flex items-center justify-between gap-3 px-4 min-h-[42px] py-1.5 border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/50 shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2 border-b border-slate-100 bg-white shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 shrink-0">
             <Inbox className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
           </div>
-          <div className="min-w-0">
-            <h2 className="text-[13px] font-bold text-slate-800 leading-none">Hộp thư đa kênh thông minh</h2>
-            <p className="text-[9.5px] text-slate-400 font-medium mt-0.5 truncate">
-              {formatInboxMonthLabel(selectedMonth)} · 4 số đếm theo tháng và nền tảng đang chọn
-            </p>
-          </div>
+          <h2 className="text-[13px] font-bold text-slate-800 leading-none truncate">Hộp thư đa kênh thông minh</h2>
           <span
-            className={`flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full ml-1 shrink-0 ${
+            className={`flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${
               connected
                 ? 'bg-emerald-50 text-emerald-600'
                 : 'bg-red-50 text-red-500 animate-pulse'
@@ -769,45 +763,28 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
             {connected ? <><Wifi className="w-2.5 h-2.5" /> Live</> : <><WifiOff className="w-2.5 h-2.5" /> Offline</>}
           </span>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => syncMut.mutate()}
-          disabled={syncMut.isPending}
-          title="Đồng bộ hội thoại"
-          className="h-7 w-7 p-0 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 rounded-xl shrink-0"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${syncMut.isPending ? 'animate-spin' : ''}`} />
-        </Button>
-      </div>
 
-      {/* Tháng + nền tảng + kênh — 3 cột đều; count theo bộ lọc này */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50/70 shrink-0">
-        <div className="flex flex-col gap-1 min-w-0">
-          <span className="text-[10px] font-semibold text-slate-400">Tháng</span>
+        <div className="flex items-center gap-1.5 shrink-0">
           <InboxMonthSelect
             value={selectedMonth}
             onChange={(next) => startFilterTransition(() => setSelectedMonth(next))}
           />
-        </div>
-        <div className="flex flex-col gap-1 min-w-0">
-          <span className="text-[10px] font-semibold text-slate-400">Nền tảng</span>
           <InboxPlatformSelect
             value={platformFilter}
             onChange={(next) => startFilterTransition(() => setPlatformFilter(next))}
           />
-        </div>
-        <div className="flex flex-col gap-1 min-w-0">
-          <span className="text-[10px] font-semibold text-slate-400">Kênh</span>
           <Select
             value={selectedPageId ?? 'all'}
             onValueChange={(val: string) => setSelectedPageId(val === 'all' ? undefined : val)}
             disabled={pagesLoading}
           >
-            <SelectTrigger className="h-8 w-full text-[11px] font-semibold rounded-xl border-slate-200 bg-white px-2.5 [&>span]:line-clamp-1 [&>span]:truncate">
-              <SelectValue placeholder={pagesLoading ? 'Đang tải kênh...' : 'Tất cả kênh'} />
+            <SelectTrigger className="h-8 w-[176px] text-[11px] font-semibold rounded-lg border-slate-200 bg-white px-2.5 shadow-none">
+              <span className="flex items-center gap-1.5 min-w-0">
+                <Radio className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                <SelectValue placeholder={pagesLoading ? 'Đang tải...' : 'Tất cả kênh'} />
+              </span>
             </SelectTrigger>
-            <SelectContent className="max-h-72 bg-white rounded-xl">
+            <SelectContent className="max-h-72 bg-white rounded-xl min-w-[220px]">
               <InboxPageSelectItems
                 pages={filteredPages}
                 platformFilter={platformFilter}
@@ -815,6 +792,16 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
               />
             </SelectContent>
           </Select>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => syncMut.mutate()}
+            disabled={syncMut.isPending}
+            title="Đồng bộ hội thoại"
+            className="h-8 w-8 p-0 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 rounded-lg shrink-0"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncMut.isPending ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
       </div>
 
