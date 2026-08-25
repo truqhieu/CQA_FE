@@ -1066,6 +1066,7 @@ export async function fetchInboxConversationStats(options?: {
   pageId?: string
   platform?: 'messenger' | 'instagram'
   month?: string
+  signal?: AbortSignal
 }): Promise<CskhInboxConversationStats> {
   const params: Record<string, string> = {}
   if (options?.pageId) params.pageId = options.pageId
@@ -1073,7 +1074,7 @@ export async function fetchInboxConversationStats(options?: {
   if (options?.month) params.month = options.month
   const { data } = await apiClient.get<CskhInboxConversationStats>(
     '/cskh/inbox/conversation-stats',
-    { params: Object.keys(params).length ? params : undefined },
+    { params: Object.keys(params).length ? params : undefined, signal: options?.signal },
   )
   return data
 }
