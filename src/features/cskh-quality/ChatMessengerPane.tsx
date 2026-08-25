@@ -116,69 +116,42 @@ function PlatformGlyph({ name }: { name: PlatformFilter }) {
   return <LayoutGrid className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} />
 }
 
-function platformPillClass(on: boolean, key: PlatformFilter): string {
-  if (!on) return 'text-slate-500 hover:text-slate-800 hover:bg-white'
-  if (key === 'facebook') return 'bg-[#1877F2] text-white shadow-sm'
-  if (key === 'instagram') return 'bg-gradient-to-tr from-[#f58529] via-[#dd2a7b] to-[#8134af] text-white shadow-sm'
-  if (key === 'youtube') return 'bg-[#FF0000] text-white shadow-sm'
-  if (key === 'threads') return 'bg-slate-900 text-white shadow-sm'
-  return 'bg-slate-800 text-white shadow-sm'
-}
-
-function InboxPlatformPills({
+function InboxPlatformSelect({
   value,
   onChange,
-  compact,
 }: {
   value: PlatformFilter
   onChange: (next: PlatformFilter) => void
-  compact?: boolean
 }) {
   return (
-    <div
-      className={`flex items-center rounded-xl border border-slate-200/80 bg-white p-0.5 ${
-        compact ? 'overflow-x-auto max-w-full' : ''
-      }`}
-      role="tablist"
-      aria-label="Nền tảng"
-    >
-      {PLATFORM_TABS.map((tab) => {
-        const on = value === tab.key
-        return (
-          <button
-            key={tab.key}
-            type="button"
-            role="tab"
-            aria-selected={on}
-            title={tab.label}
-            onClick={() => onChange(tab.key)}
-            className={`inline-flex items-center justify-center gap-1 h-7 rounded-lg text-[10px] font-bold transition-all whitespace-nowrap ${
-              compact ? 'flex-1 min-w-[56px] px-1.5' : 'px-2.5'
-            } ${platformPillClass(on, tab.key)}`}
-          >
-            <PlatformGlyph name={tab.key} />
-            <span>{tab.label}</span>
-          </button>
-        )
-      })}
-    </div>
+    <Select value={value} onValueChange={(next: string) => onChange(next as PlatformFilter)}>
+      <SelectTrigger className="h-8 w-full text-[11px] font-semibold rounded-xl border-slate-200 bg-white px-2.5 [&>span]:line-clamp-1 [&>span]:truncate">
+        <span className="flex items-center gap-1.5 min-w-0">
+          <PlatformGlyph name={value} />
+          <SelectValue placeholder="Tất cả" />
+        </span>
+      </SelectTrigger>
+      <SelectContent className="bg-white rounded-xl">
+        {PLATFORM_TABS.map((tab) => (
+          <SelectItem key={tab.key} value={tab.key}>
+            {tab.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
 function InboxMonthSelect({
   value,
   onChange,
-  fullWidth,
 }: {
   value: string
   onChange: (next: string) => void
-  fullWidth?: boolean
 }) {
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger
-        className={`${fullWidth ? 'w-full' : 'min-w-[158px]'} h-7 text-[11px] font-semibold rounded-xl border-slate-200 bg-white px-2 [&>span]:line-clamp-1`}
-      >
+      <SelectTrigger className="h-8 w-full text-[11px] font-semibold rounded-xl border-slate-200 bg-white px-2.5 [&>span]:line-clamp-1">
         <span className="flex items-center gap-1.5 min-w-0">
           <CalendarDays className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
           <SelectValue placeholder="Tháng" />
@@ -808,31 +781,30 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
         </Button>
       </div>
 
-      {/* Tháng + nền tảng + kênh — luôn hiện; 4 số đếm phía dưới theo đúng bộ lọc này */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 border-b border-slate-100 bg-slate-50/70 shrink-0">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-semibold text-slate-400 whitespace-nowrap">Tháng</span>
+      {/* Tháng + nền tảng + kênh — 3 cột đều; count theo bộ lọc này */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50/70 shrink-0">
+        <div className="flex flex-col gap-1 min-w-0">
+          <span className="text-[10px] font-semibold text-slate-400">Tháng</span>
           <InboxMonthSelect
             value={selectedMonth}
             onChange={(next) => startFilterTransition(() => setSelectedMonth(next))}
           />
         </div>
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-[10px] font-semibold text-slate-400 whitespace-nowrap">Nền tảng</span>
-          <InboxPlatformPills
-            compact
+        <div className="flex flex-col gap-1 min-w-0">
+          <span className="text-[10px] font-semibold text-slate-400">Nền tảng</span>
+          <InboxPlatformSelect
             value={platformFilter}
             onChange={(next) => startFilterTransition(() => setPlatformFilter(next))}
           />
         </div>
-        <div className="flex items-center gap-1.5 min-w-0 flex-1">
-          <span className="text-[10px] font-semibold text-slate-400 whitespace-nowrap">Kênh</span>
+        <div className="flex flex-col gap-1 min-w-0">
+          <span className="text-[10px] font-semibold text-slate-400">Kênh</span>
           <Select
             value={selectedPageId ?? 'all'}
             onValueChange={(val: string) => setSelectedPageId(val === 'all' ? undefined : val)}
             disabled={pagesLoading}
           >
-            <SelectTrigger className="h-7 min-w-[140px] max-w-[240px] w-full text-[11px] rounded-xl border-slate-200 bg-white px-2 [&>span]:line-clamp-1 [&>span]:truncate">
+            <SelectTrigger className="h-8 w-full text-[11px] font-semibold rounded-xl border-slate-200 bg-white px-2.5 [&>span]:line-clamp-1 [&>span]:truncate">
               <SelectValue placeholder={pagesLoading ? 'Đang tải kênh...' : 'Tất cả kênh'} />
             </SelectTrigger>
             <SelectContent className="max-h-72 bg-white rounded-xl">
