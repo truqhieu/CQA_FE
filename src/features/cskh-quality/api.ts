@@ -426,8 +426,10 @@ export async function createOmsOrder(payload: CreateOmsOrderPayload): Promise<Cr
   return data
 }
 
+export type ProductOperationsPeriodType = 'month' | 'week' | 'day'
+
 export interface ProductOperationsDashboard {
-  month: string
+  period: { type: ProductOperationsPeriodType; value: string }
   kpis: {
     ordered: number
     orderedChangePct: number
@@ -454,12 +456,15 @@ export interface ProductOperationsDashboard {
   }>
   stockoutListCount: number
   stockoutsPagination: { page: number; pageSize: number; total: number; totalPages: number }
-  topRevenueProducts: Array<{ name: string; sku: string; quantity: number; revenue: number }>
+  topRevenueProducts: Array<{ name: string; sku: string; quantity: number; orderCount: number; revenue: number }>
+  revenueSummary: { totalRevenue: number; totalProducts: number }
   extraMetrics: Array<{ key: string; label: string; value: string; caption: string }>
 }
 
 export async function fetchProductOperations(params?: {
   month?: string
+  week?: string
+  day?: string
   categoryId?: string
   locationId?: string
   topLimit?: number
