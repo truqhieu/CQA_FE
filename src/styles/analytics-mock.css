@@ -6,7 +6,10 @@
   gap: 14px;
   height: 100%;
   overflow: auto;
+  overflow-x: hidden;
   min-height: 0;
+  padding-right: 8px;
+  margin-right: -8px;
 }
 
 /* ── Card headers ── */

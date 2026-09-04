@@ -70,6 +70,19 @@ function finalizeSheet(sheet, headerRowNumber) {
   sheet.properties.tabColor = { argb: INDIGO };
 }
 
+const PERIOD_NOUN = { day: 'Ngày', week: 'Tuần', month: 'Tháng' };
+const PERIOD_NOUN_LOWER = { day: 'ngày', week: 'tuần', month: 'tháng' };
+
+/** Nhãn hiển thị cho kỳ báo cáo đang chọn, vd "Tháng 2026-08" / "Tuần 2026-W32" / "Ngày 2026-08-08". */
+function periodLabel(period) {
+  const noun = PERIOD_NOUN[period?.type] ?? 'Tháng';
+  return `${noun} ${period?.value ?? ''}`;
+}
+
+function periodNounLower(period) {
+  return PERIOD_NOUN_LOWER[period?.type] ?? 'tháng';
+}
+
 /** Dựng workbook báo cáo "Sản phẩm — Vận hành theo tháng" — tách riêng để test được không phụ thuộc DOM. */
 export function buildProductOperationsWorkbook(dashboard, filters = {}) {
   const wb = new ExcelJS.Workbook();
@@ -84,7 +97,7 @@ export function buildProductOperationsWorkbook(dashboard, filters = {}) {
 
   // ── Sheet 1: Tổng quan ──────────────────────────────────────────────
   const overview = wb.addWorksheet('Tổng quan');
-  addTitleBand(overview, `Báo cáo vận hành sản phẩm — Tháng ${dashboard.month}`, 3);
+  addTitleBand(overview, `Báo cáo vận hành sản phẩm — ${periodLabel(dashboard.period)}`, 3);
 
   let row = 3;
   meta.forEach(([label, value]) => {
@@ -112,7 +125,7 @@ export function buildProductOperationsWorkbook(dashboard, filters = {}) {
         { header: 'Giá trị', width: 20, align: 'right' },
       ],
       [
-        ['SP lên đơn trong tháng', dashboard.kpis.ordered.toLocaleString('vi-VN')],
+        [`SP lên đơn trong ${periodNounLower(dashboard.period)}`, dashboard.kpis.ordered.toLocaleString('vi-VN')],
         ['SP đã xuất hàng', dashboard.kpis.shipped.toLocaleString('vi-VN')],
         ['Tỉ lệ xuất / lên đơn', `${Math.round(dashboard.kpis.shipToOrderRate)}%`],
         ['SP thiếu hàng khi lên đơn', dashboard.kpis.stockoutCount.toLocaleString('vi-VN')],
@@ -134,7 +147,7 @@ export function buildProductOperationsWorkbook(dashboard, filters = {}) {
 
   // ── Sheet 2: Top sản phẩm được order ────────────────────────────────
   const topSheet = wb.addWorksheet('Top order');
-  addTitleBand(topSheet, `Top sản phẩm được order nhiều nhất — Tháng ${dashboard.month}`, 6);
+  addTitleBand(topSheet, `Top sản phẩm được order nhiều nhất — ${periodLabel(dashboard.period)}`, 6);
   addTable(
     topSheet,
     3,
@@ -144,7 +157,7 @@ export function buildProductOperationsWorkbook(dashboard, filters = {}) {
       { header: 'Danh mục', width: 22 },
       { header: 'Lượt đặt', width: 12, align: 'right', numFmt: '#,##0' },
       { header: 'Số lượng', width: 12, align: 'right', numFmt: '#,##0' },
-      { header: '% so tháng trước', width: 16, align: 'right', numFmt: '+0.0%;-0.0%' },
+      { header: `% so ${periodNounLower(dashboard.period)} trước`, width: 16, align: 'right', numFmt: '+0.0%;-0.0%' },
     ],
     dashboard.topOrdered.map((p) => [p.rank, p.name, p.category, p.count, p.qty, p.changePct / 100]),
     (_r, colIdx, value) =>
@@ -154,7 +167,7 @@ export function buildProductOperationsWorkbook(dashboard, filters = {}) {
 
   // ── Sheet 3: Sản phẩm thiếu hàng (đầy đủ, không phân trang) ─────────
   const stockSheet = wb.addWorksheet('Thiếu hàng');
-  addTitleBand(stockSheet, `Sản phẩm thiếu hàng — Tháng ${dashboard.month}`, 5);
+  addTitleBand(stockSheet, `Sản phẩm thiếu hàng — ${periodLabel(dashboard.period)}`, 5);
   addTable(
     stockSheet,
     3,
@@ -178,12 +191,12 @@ export function buildProductOperationsWorkbook(dashboard, filters = {}) {
 
   // ── Sheet 4: Top 10 doanh thu ────────────────────────────────────────
   const revSheet = wb.addWorksheet('Top doanh thu');
-  addTitleBand(revSheet, `Top 10 sản phẩm doanh thu cao nhất — Tháng ${dashboard.month}`, 5);
+  addTitleBand(revSheet, `Top 10 sản phẩm doanh thu cao nhất — ${periodLabel(dashboard.period)}`, 5);
   let revTableRow = 3;
   if (filters.categoryLabel) {
     revSheet.mergeCells(3, 1, 3, 5);
     const noteCell = revSheet.getCell(3, 1);
-    noteCell.value = '* Chỉ áp dụng bộ lọc Tháng/Kho — OMS chưa hỗ trợ lọc theo Danh mục cho báo cáo doanh thu sản phẩm.';
+    noteCell.value = '* Chỉ áp dụng bộ lọc Kỳ/Kho — OMS chưa hỗ trợ lọc theo Danh mục cho báo cáo doanh thu sản phẩm.';
     noteCell.font = { italic: true, size: 9.5, color: { argb: 'FFB45309' } };
     revTableRow = 5;
   }
@@ -214,7 +227,7 @@ export async function exportProductOperationsExcel(dashboard, filters = {}) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `bao-cao-san-pham-${dashboard.month}.xlsx`;
+  a.download = `bao-cao-san-pham-${dashboard.period?.value ?? 'export'}.xlsx`;
   document.body.appendChild(a);
   a.click();
   a.remove();
