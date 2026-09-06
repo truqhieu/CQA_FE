@@ -388,7 +388,9 @@ export function ChatPanel({
               <span className="text-[10px] text-slate-400 font-medium">
                 {conversation.platform === 'instagram'
                   ? 'Cuộc trò chuyện Instagram'
-                  : 'Cuộc trò chuyện Facebook'}
+                  : conversation.platform === 'tiktok'
+                    ? 'Cuộc trò chuyện TikTok'
+                    : 'Cuộc trò chuyện Facebook'}
               </span>
               {translatingPending && (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-indigo-50 text-indigo-600 leading-none">

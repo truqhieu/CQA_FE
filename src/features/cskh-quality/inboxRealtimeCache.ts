@@ -122,7 +122,10 @@ function matchesConversationFilter(
     if (allowed.length > 0 && !allowed.includes(conv.pageId)) return false
   }
   if (platformFilter === 'instagram' && conv.platform && conv.platform !== 'instagram') return false
-  if (platformFilter === 'facebook' && conv.platform === 'instagram') return false
+  if (platformFilter === 'tiktok' && conv.platform && conv.platform !== 'tiktok') return false
+  if (platformFilter === 'facebook' && (conv.platform === 'instagram' || conv.platform === 'tiktok')) {
+    return false
+  }
   if (platformFilter === 'threads' || platformFilter === 'youtube') return false
   if (!conversationInInboxMonth(conv.lastMessageAt, monthKey)) return false
   if (activeFilter === 'ads' && !conv.fromAd) return false

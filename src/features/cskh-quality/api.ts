@@ -5,7 +5,7 @@ export interface CskhPage {
   pageId: string
   pageName: string | null
   pagePictureUrl?: string | null
-  platform?: 'messenger' | 'instagram' | string
+  platform?: 'messenger' | 'instagram' | 'tiktok' | string
   enabled: boolean
   updatedAt: string
   conversationCount?: number
@@ -624,6 +624,16 @@ export async function syncCskhPagesAdSpend(date?: string): Promise<{
   return data
 }
 
+export async function connectTikTokAccounts(): Promise<{
+  connected: boolean
+  oauthUser: string
+  pageCount: number
+  pages: Array<{ pageId: string; pageName: string; username: string }>
+}> {
+  const { data } = await apiClient.post('/cskh/tiktok/connect')
+  return data
+}
+
 export async function refreshCskhOAuth(): Promise<{ pageCount: number; oauthUser: string }> {
   const { data } = await apiClient.post<{ pageCount: number; oauthUser: string }>(
     '/cskh/oauth/refresh'
@@ -1006,7 +1016,7 @@ export interface CskhInboxConversation {
   id: string
   pageId: string
   pageName: string | null
-  platform?: 'messenger' | 'instagram' | string
+  platform?: 'messenger' | 'instagram' | 'tiktok' | string
   fbConversationId: string | null
   participantPsid: string
   customerName: string | null
@@ -1064,7 +1074,7 @@ export interface CskhInboxConversationPage {
 
 export async function fetchInboxConversationStats(options?: {
   pageId?: string
-  platform?: 'messenger' | 'instagram'
+  platform?: 'messenger' | 'instagram' | 'tiktok'
   month?: string
   signal?: AbortSignal
 }): Promise<CskhInboxConversationStats> {
@@ -1092,7 +1102,7 @@ export async function fetchInboxConversationsPage(options?: {
   labelId?: string
   unlabeledOnly?: boolean
   includeLabels?: boolean
-  platform?: 'messenger' | 'instagram'
+  platform?: 'messenger' | 'instagram' | 'tiktok'
 }): Promise<CskhInboxConversationPage> {
   const params: Record<string, string> = {}
   if (options?.pageId) params.pageId = options.pageId

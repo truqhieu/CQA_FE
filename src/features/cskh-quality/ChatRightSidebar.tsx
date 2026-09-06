@@ -146,25 +146,37 @@ export function ChatRightSidebar({
         />
         <h3 className="text-sm font-bold text-slate-800 truncate max-w-full">
           {conversation.customerName ||
-            (conversation.platform === 'instagram' ? 'Khách Instagram' : 'Khách hàng Messenger')}
+            (conversation.platform === 'instagram'
+              ? 'Khách Instagram'
+              : conversation.platform === 'tiktok'
+                ? 'Khách TikTok'
+                : 'Khách hàng Messenger')}
         </h3>
         <span
           className={cn(
             'inline-flex items-center gap-1.5 mt-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold border',
             conversation.platform === 'instagram'
               ? 'bg-pink-50 text-pink-600 border-pink-100/50'
-              : 'bg-blue-50 text-blue-600 border-blue-100/50',
+              : conversation.platform === 'tiktok'
+                ? 'bg-slate-50 text-slate-700 border-slate-200'
+                : 'bg-blue-50 text-blue-600 border-blue-100/50',
           )}
         >
           <span
             className={cn(
               'w-1.5 h-1.5 rounded-full',
-              conversation.platform === 'instagram' ? 'bg-pink-500' : 'bg-blue-500',
+              conversation.platform === 'instagram'
+                ? 'bg-pink-500'
+                : conversation.platform === 'tiktok'
+                  ? 'bg-slate-900'
+                  : 'bg-blue-500',
             )}
           />
           {conversation.platform === 'instagram'
             ? 'Instagram · Instagram User'
-            : 'Messenger · Facebook User'}
+            : conversation.platform === 'tiktok'
+              ? 'TikTok · Business Account'
+              : 'Messenger · Facebook User'}
         </span>
       </div>
 
