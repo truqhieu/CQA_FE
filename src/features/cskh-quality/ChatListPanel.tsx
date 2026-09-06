@@ -184,13 +184,21 @@ const ConversationRow = memo(function ConversationRow({
             <span
               className={cn(
                 'inline-flex items-center gap-0.5 text-[9.5px] font-medium',
-                conv.platform === 'instagram' ? 'text-pink-500' : 'text-blue-500',
+                conv.platform === 'instagram'
+                  ? 'text-pink-500'
+                  : conv.platform === 'tiktok'
+                    ? 'text-slate-800'
+                    : 'text-blue-500',
               )}
             >
               <span
                 className={cn(
                   'w-1 h-1 rounded-full inline-block',
-                  conv.platform === 'instagram' ? 'bg-pink-500' : 'bg-blue-500',
+                  conv.platform === 'instagram'
+                    ? 'bg-pink-500'
+                    : conv.platform === 'tiktok'
+                      ? 'bg-slate-900'
+                      : 'bg-blue-500',
                 )}
               />
               {inboxChannelLabel(conv.platform)}

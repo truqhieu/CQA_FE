@@ -17,7 +17,9 @@ export function cskhAvatarSrc(pictureUrl?: string | null): string | undefined {
 }
 
 export function inboxChannelLabel(platform?: string | null): string {
-  return platform === 'instagram' ? 'Instagram' : 'Messenger'
+  if (platform === 'instagram') return 'Instagram'
+  if (platform === 'tiktok') return 'TikTok'
+  return 'Messenger'
 }
 
 export { cskhCustomerAvatarSrc, cskhMediaSrc, cskhPageAvatarSrc } from './messageMedia'

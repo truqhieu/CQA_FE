@@ -50,12 +50,13 @@ type ChatMessengerPaneProps = {
 }
 
 type FilterTab = 'all' | 'unread' | 'ads' | 'normal'
-type PlatformFilter = 'all' | 'facebook' | 'instagram' | 'threads' | 'youtube'
+type PlatformFilter = 'all' | 'facebook' | 'instagram' | 'tiktok' | 'threads' | 'youtube'
 
 const PLATFORM_TABS: { key: PlatformFilter; label: string }[] = [
   { key: 'all', label: 'Tất cả' },
   { key: 'facebook', label: 'Facebook' },
   { key: 'instagram', label: 'Instagram' },
+  { key: 'tiktok', label: 'TikTok' },
   { key: 'threads', label: 'Threads' },
   { key: 'youtube', label: 'YouTube' },
 ]
@@ -67,19 +68,28 @@ const EMPTY_STATS: CskhInboxConversationStats = { total: 0, fromAd: 0, unread: 0
 
 function pageBucket(platform?: string): Exclude<PlatformFilter, 'all'> {
   if (platform === 'instagram') return 'instagram'
+  if (platform === 'tiktok') return 'tiktok'
   if (platform === 'threads') return 'threads'
   if (platform === 'youtube') return 'youtube'
   return 'facebook'
 }
 
-function graphPlatformParam(filter: PlatformFilter): 'messenger' | 'instagram' | undefined {
+function graphPlatformParam(
+  filter: PlatformFilter,
+): 'messenger' | 'instagram' | 'tiktok' | undefined {
   if (filter === 'instagram') return 'instagram'
   if (filter === 'facebook') return 'messenger'
+  if (filter === 'tiktok') return 'tiktok'
   return undefined
 }
 
 function hasConnectedInbox(filter: PlatformFilter): boolean {
-  return filter === 'all' || filter === 'facebook' || filter === 'instagram'
+  return (
+    filter === 'all' ||
+    filter === 'facebook' ||
+    filter === 'instagram' ||
+    filter === 'tiktok'
+  )
 }
 
 function PlatformGlyph({ name }: { name: PlatformFilter }) {
@@ -101,6 +111,13 @@ function PlatformGlyph({ name }: { name: PlatformFilter }) {
     return (
       <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="currentColor" aria-hidden>
         <path d="M23.5 6.2a3.05 3.05 0 00-2.15-2.16C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.35.44A3.05 3.05 0 00.5 6.2 31.9 31.9 0 000 12a31.9 31.9 0 00.5 5.8 3.05 3.05 0 002.15 2.16C4.5 20.4 12 20.4 12 20.4s7.5 0 9.35-.44a3.05 3.05 0 002.15-2.16A31.9 31.9 0 0024 12a31.9 31.9 0 00-.5-5.8zM9.6 15.6V8.4L15.8 12l-6.2 3.6z" />
+      </svg>
+    )
+  }
+  if (name === 'tiktok') {
+    return (
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="currentColor" aria-hidden>
+        <path d="M14.5 3c.3 2.2 1.6 3.8 3.8 4.1v2.2c-1.3 0-2.5-.4-3.5-1.1v6.5c0 3.2-2.6 5.7-5.8 5.7S3.2 17.9 3.2 14.7c0-3 2.3-5.5 5.2-5.8v2.4c-1.4.3-2.4 1.5-2.4 3 0 1.7 1.4 3.1 3.1 3.1s3.1-1.4 3.1-3.1V3h2.3z" />
       </svg>
     )
   }
@@ -169,6 +186,7 @@ function InboxMonthSelect({
 function channelAllLabel(platformFilter: PlatformFilter, count: string | number): string {
   if (platformFilter === 'facebook') return `Tất cả FB (${count})`
   if (platformFilter === 'instagram') return `Tất cả IG (${count})`
+  if (platformFilter === 'tiktok') return `Tất cả TT (${count})`
   if (platformFilter === 'threads') return `Tất cả Threads (${count})`
   if (platformFilter === 'youtube') return `Tất cả YT (${count})`
   return `Tất cả kênh (${count})`
@@ -330,7 +348,7 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
       labelId?: string
       unlabeledOnly?: boolean
       includeLabels?: boolean
-      platform?: 'messenger' | 'instagram'
+      platform?: 'messenger' | 'instagram' | 'tiktok'
       month?: string
     } = { pageId: selectedPageId, platform: graphPlatform, month: selectedMonth }
     switch (activeFilter) {
@@ -512,6 +530,9 @@ export function ChatMessengerPane({ pageId }: ChatMessengerPaneProps) {
     }
     if (platformFilter === 'youtube') {
       return 'Chưa kết nối YouTube. Hội thoại sẽ xuất hiện ở đây khi OAuth được bật.'
+    }
+    if (platformFilter === 'tiktok' && filteredPages.length === 0 && !pagesLoading) {
+      return 'Chưa kết nối TikTok. Vào Cài đặt kênh → Kết nối TikTok for Business.'
     }
     if (platformFilter === 'instagram' && filteredPages.length === 0 && !pagesLoading) {
       return 'Chưa có kênh Instagram. Gắn Instagram Professional vào Fanpage rồi Cập nhật kết nối Facebook.'

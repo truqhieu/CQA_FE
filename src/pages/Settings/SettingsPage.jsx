@@ -6,7 +6,7 @@ import { Link2, Loader2, RefreshCw, Trash2 } from 'lucide-react';
 import {
   MagnifyingGlass, FloppyDisk, Sparkle, CheckCircle, CaretRight, Sliders, Play, GearSix,
   Shield, HardDrive, ArrowsCounterClockwise, Megaphone, Package, Wrench, Brain, Key,
-  FacebookLogo, InstagramLogo, YoutubeLogo, ThreadsLogo,
+  FacebookLogo, InstagramLogo, YoutubeLogo, ThreadsLogo, TiktokLogo,
   Lightbulb, Bell, Link, ClipboardText
 } from '@phosphor-icons/react';
 import { settingsTabs, qaPrompts, qaCriteria, settingsQuickLinks } from '../../data/mockData';
@@ -14,6 +14,7 @@ import {
   fetchCskhPages,
   getCskhOAuthStartUrl,
   refreshCskhOAuth,
+  connectTikTokAccounts,
   setCskhPageEnabled,
   deleteCskhPage,
   syncInboxFromGraph,
@@ -25,6 +26,7 @@ import PancakeChannelsPanel from '@/features/pancake-test/PancakeChannelsPanel';
 const FB_FALLBACK_IMG =
   'https://www.facebook.com/images/profile/timeline/homepage/composer/logo_graphic.png';
 const IG_FALLBACK_IMG = 'https://www.instagram.com/static/images/ico/favicon-192.png';
+const TT_FALLBACK_IMG = 'https://sf16-website-login.neutral.ttwstatic.com/obj/tiktok_web_login_static/tiktok/webapp/main/webapp-desktop/8152caf0c8e8bc67ae0d.png';
 
 function ChannelPagesTable({
   pages,
@@ -237,8 +239,23 @@ Các tiêu chí cần đánh giá:
   const isPagesBusy = isLoadingPages || isFetchingPages || isRefreshing;
   const isOAuthSyncing = pagesData?.oauthSyncStatus === 'running';
   const allChannelPages = pagesData?.pages ?? [];
-  const fbPages = allChannelPages.filter((p) => p.platform !== 'instagram');
+  const fbPages = allChannelPages.filter((p) => p.platform !== 'instagram' && p.platform !== 'tiktok');
   const igPages = allChannelPages.filter((p) => p.platform === 'instagram');
+  const ttPages = allChannelPages.filter((p) => p.platform === 'tiktok');
+  const tiktokConnected = ttPages.length > 0;
+
+  const tiktokConnectMutation = useMutation({
+    mutationFn: () => connectTikTokAccounts(),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['cskh', 'pages'] });
+      queryClient.invalidateQueries({ queryKey: ['cskh', 'inbox'] });
+      toast.success(`Đã kết nối ${data.pageCount} kênh TikTok từ Business Center.`);
+    },
+    onError: (err) => {
+      toast.error('Không kết nối được TikTok: ' + (err.message || err));
+    },
+  });
+  const isTikTokConnecting = tiktokConnectMutation.isPending;
 
   useEffect(() => {
     setTimeout(() => setAnim(true), 200);
@@ -574,7 +591,7 @@ Các tiêu chí cần đánh giá:
             <div style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: '8px' }}>
               <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#111827' }}>Cấu hình Kênh Kết nối</h3>
               <p style={{ fontSize: '11px', color: '#6b7280' }}>
-                Kết nối Meta một lần — Fanpage và Instagram được chia theo mục bên dưới. Threads và YouTube chưa bật OAuth.
+                Kết nối Meta (Facebook/Instagram) và TikTok for Business riêng. Threads và YouTube chưa bật OAuth.
               </p>
             </div>
 
@@ -824,6 +841,87 @@ Các tiêu chí cần đánh giá:
                   emptyText={pagesData?.oauthConnected
                     ? 'Chưa thấy Instagram nào. Gắn Instagram Professional vào Fanpage (Meta Business Suite), rồi Cập nhật kết nối Facebook.'
                     : 'Kết nối Facebook trước, rồi gắn Instagram Professional vào Fanpage.'}
+                  onToggle={(pageId, enabled) => toggleMutation.mutate({ pageId, enabled })}
+                  onDelete={(pageId) => deleteMutation.mutate(pageId)}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '14px', border: '1px solid #e5e7eb', borderRadius: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <TiktokLogo size={18} weight="fill" style={{ color: '#111827' }} />
+                  <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#111827', margin: 0 }}>TikTok</h4>
+                  <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#6b7280', background: '#f3f4f6', padding: '2px 8px', borderRadius: 999 }}>
+                    {ttPages.length} kênh
+                  </span>
+                </div>
+                <p style={{ fontSize: 11, color: '#6b7280', margin: 0, lineHeight: 1.5 }}>
+                  Scope <strong>TikTok Accounts</strong> — lấy kênh TikTok Business đã gắn Business Center vào CRM.
+                  Chat (Business Messaging) xin riêng sau khi list kênh xong.
+                </p>
+                <div style={{
+                  background: tiktokConnected ? '#f0fdf4' : '#f9fafb',
+                  border: tiktokConnected ? '1px solid #dcfce7' : '1px solid #e5e7eb',
+                  borderRadius: '8px',
+                  padding: '14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{
+                      width: 40, height: 40, borderRadius: '50%',
+                      background: tiktokConnected ? '#111827' : '#e5e7eb',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: '#fff', flexShrink: 0,
+                    }}>
+                      <TiktokLogo size={20} weight="fill" />
+                    </div>
+                    <div>
+                      <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#1f2937', margin: 0 }}>
+                        {tiktokConnected
+                          ? `TikTok Business Center · ${ttPages.length} kênh`
+                          : 'Chưa kết nối TikTok for Business'}
+                      </h4>
+                      <p style={{ fontSize: '11px', color: '#6b7280', margin: '2px 0 0' }}>
+                        {isTikTokConnecting
+                          ? 'Đang xác thực TikTok Accounts và lấy danh sách kênh từ BC…'
+                          : tiktokConnected
+                            ? 'Đã ủy quyền. Danh sách bên dưới là TikTok account gắn Business Center.'
+                            : 'Bấm kết nối để ủy quyền TikTok Accounts và kéo kênh vào CRM.'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isTikTokConnecting}
+                    onClick={() => tiktokConnectMutation.mutate()}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      fontSize: '12.5px',
+                      fontWeight: 600,
+                      background: '#111827',
+                      color: '#fff',
+                      border: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      cursor: isTikTokConnecting ? 'wait' : 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {isTikTokConnecting ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
+                    {tiktokConnected ? 'Cập nhật kết nối TikTok' : 'Kết nối TikTok for Business'}
+                  </button>
+                </div>
+                <ChannelPagesTable
+                  pages={ttPages}
+                  nameHeader="Tên kênh TikTok"
+                  fallbackImg={TT_FALLBACK_IMG}
+                  busy={isTikTokConnecting}
+                  busyText="Đang lấy kênh TikTok từ Business Center..."
+                  emptyText="Chưa có kênh TikTok. Bấm Kết nối TikTok for Business để ủy quyền Accounts API."
                   onToggle={(pageId, enabled) => toggleMutation.mutate({ pageId, enabled })}
                   onDelete={(pageId) => deleteMutation.mutate(pageId)}
                 />

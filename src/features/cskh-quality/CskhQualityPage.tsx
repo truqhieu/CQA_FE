@@ -1990,7 +1990,12 @@ function ConfigTab() {
                       {p.pageName || p.pageId}
                     </p>
                     <p className="truncate text-xs text-n-400 dark:text-n-500">
-                      {p.platform === 'instagram' ? 'Instagram' : 'Facebook'} · ID: {p.pageId}
+                      {p.platform === 'instagram'
+                        ? 'Instagram'
+                        : p.platform === 'tiktok'
+                          ? 'TikTok'
+                          : 'Facebook'}{' '}
+                      · ID: {p.pageId}
                     </p>
                   </div>
                 </div>
